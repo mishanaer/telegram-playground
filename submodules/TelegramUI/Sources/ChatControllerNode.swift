@@ -4371,8 +4371,20 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                 return
             }
             self.quickAttachSelections[index].media = media
-            if let file = media as? TelegramMediaFile, file.isVideo {
-                // The strip flew in a still; now that the video is exported the tile can play it.
+            // The strip flew in a 128pt thumbnail; replace it with a preview-grade image from the
+            // exported media (this also lets a video tile start playing).
+            if let imageSignal = self.quickAttachItemSignal(identifier: identifier, mediaReference: .standalone(media: media), peerId: self.chatLocation.peerId ?? self.context.account.peerId) {
+                let imageDisposable = MetaDisposable()
+                self.quickAttachConversionDisposables.add(imageDisposable)
+                imageDisposable.set((imageSignal
+                |> deliverOnMainQueue).start(next: { [weak self] item in
+                    guard let self, let index = self.quickAttachSelections.firstIndex(where: { $0.identifier == identifier }) else {
+                        return
+                    }
+                    self.quickAttachSelections[index].image = item.image
+                    self.refreshQuickAttachPreviews(animated: false)
+                }))
+            } else if let file = media as? TelegramMediaFile, file.isVideo {
                 self.refreshQuickAttachPreviews(animated: false)
             }
             self.flushQuickAttachSendIfReady()
@@ -4443,20 +4455,20 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
 
         if let imageReference = mediaReference.concrete(TelegramMediaImage.self), let representation = largestRepresentationForPhoto(imageReference.media) {
             imageDimensions = representation.dimensions.cgSize
-            imageSignal = chatMessagePhotoThumbnail(
-                account: self.context.account,
+            // Not chatMessagePhotoThumbnail: that one serves a 180x180 cached copy whatever size is
+            // asked for, which is what made the preview grid blurry.
+            imageSignal = chatMessagePhoto(
+                postbox: self.context.account.postbox,
                 userLocation: .peer(peerId),
-                photoReference: imageReference,
-                blurred: false
+                photoReference: imageReference
             )
         } else if let fileReference = mediaReference.concrete(TelegramMediaFile.self), let representation = largestImageRepresentation(fileReference.media.previewRepresentations) {
             imageDimensions = representation.dimensions.cgSize
             if fileReference.media.isVideo {
-                imageSignal = chatMessageVideoThumbnail(
-                    account: self.context.account,
+                imageSignal = chatMessageVideo(
+                    postbox: self.context.account.postbox,
                     userLocation: .peer(peerId),
-                    fileReference: fileReference,
-                    blurred: false
+                    videoReference: fileReference
                 )
             } else {
                 imageSignal = chatWebpageSnippetFile(
