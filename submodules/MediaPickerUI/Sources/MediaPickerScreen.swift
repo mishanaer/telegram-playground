@@ -1921,7 +1921,8 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             if let selectionNode = self.selectionNode, let controller = self.controller {
                 let selectionTransition = selectionNode.supernode == nil ? .immediate : transition
                 if selectionNode.supernode == nil {
-                    self.gridContainerNode.insertSubnode(selectionNode, aboveSubnode: self.gridNode)
+                    // The message preview is not part of the photo grid; keep it out of the warp.
+                    self.containerNode.insertSubnode(selectionNode, belowSubnode: self.scrollingArea)
                 }
                 
                 let selectedItems = controller.interaction?.selectionState?.selectedItems() as? [TGMediaSelectableItem] ?? []
@@ -2836,15 +2837,15 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         // alpha+blur item transition morphs one icon into the other.
         if usesSwappedControls {
             if !isBack {
-                // One stable left item that cross-rotates close <-> more the way the composer's
+                // One stable item that cross-rotates close <-> more the way the composer's
                 // paperclip turns into cancel; the dots play their own animation as they arrive.
                 let showsMore = rightControlItems.contains(where: { $0.id == AnyHashable("more") })
                 rightControlItems.removeAll(where: { $0.id == AnyHashable("more") })
                 let playMore = self.quickAttachMorePlayOnce
                 leftControlItems = [GlassControlGroupComponent.Item(
-                    id: AnyHashable("leftControl"),
+                    id: AnyHashable("closeOrMore"),
                     content: .customIcon(
-                        id: AnyHashable("leftControl"),
+                        id: AnyHashable("closeOrMore"),
                         component: AnyComponent(RotatingIconSwapComponent(
                             firstIcon: "Navigation/Close",
                             secondAnimation: "anim_morewide",
@@ -2860,7 +2861,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                         }
                         if showsMore {
                             playMore.invoke(Void())
-                            if let controlsView = self.buttons?.view as? GlassControlPanelComponent.View, let sourceView = controlsView.leftItemView?.itemView(id: AnyHashable("leftControl")) {
+                            if let controlsView = self.buttons?.view as? GlassControlPanelComponent.View, let sourceView = controlsView.rightItemView?.itemView(id: AnyHashable("closeOrMore")) ?? controlsView.leftItemView?.itemView(id: AnyHashable("closeOrMore")) {
                                 self.searchOrMorePressed(view: sourceView, gesture: nil)
                             }
                         } else {
@@ -2881,6 +2882,9 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                     }
                 ))
             }
+            // Close/more sits on the right, next to the thumb; the chevron that hands the selection
+            // back to the composer takes the left slot.
+            swap(&leftControlItems, &rightControlItems)
         }
         
         if let buttons = self.buttons {
@@ -2891,7 +2895,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 transition: buttonTransition,
                 component: AnyComponent(GlassControlPanelComponent(
                     theme: self.presentationData.theme,
-                    leftItem: GlassControlPanelComponent.Item(
+                    leftItem: leftControlItems.isEmpty ? nil : GlassControlPanelComponent.Item(
                         items: leftControlItems,
                         background: .panel
                     ),
