@@ -417,7 +417,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             self.backgroundNode.backgroundColor = self.presentationData.theme.list.plainBackgroundColor
 
             if controller.warpContentsOnBottomEdge {
-                let bottomWarpView = WarpView(frame: .zero, warpViewCount: 16)
+                let bottomWarpView = WarpView(frame: .zero, warpViewCount: 8)
                 self.bottomWarpView = bottomWarpView.isAvailable ? bottomWarpView : nil
             } else {
                 self.bottomWarpView = nil
@@ -2688,8 +2688,12 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             }
             
             self.titleView.updateTitle(title: title, subtitle: self.titleView.subtitle, isEnabled: titleIsEnabled, animated: true)
-            self.cancelButtonNode.setState(isEnabled ? .cancel : .back, animated: true)
-            isBack = !isEnabled
+            // Quick attach opens the preview straight from the composer: there is no grid behind
+            // it to go back to, so the left control keeps its selection menu and the chevron on the
+            // right hands the selection back.
+            let isBackState = !isEnabled && self.collapseToComposer == nil
+            self.cancelButtonNode.setState(isBackState ? .back : .cancel, animated: true)
+            isBack = isBackState
             
             let selectedSize = self.selectedButtonNode.update(count: count)
             
@@ -2709,7 +2713,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             moreIsVisible = count > 0
         }
         
-        let useGlassButtons = (isBack || !self.controllerNode.scrolledToTop) && !self.controllerNode.isSwitchingAssetGroup
+        let useGlassButtons = (isBack || self.controllerNode.currentDisplayMode == .selected || !self.controllerNode.scrolledToTop) && !self.controllerNode.isSwitchingAssetGroup
         
         let barButtonSideInset: CGFloat = 16.0
     
@@ -3406,6 +3410,9 @@ final class MediaPickerContext: AttachmentMediaPickerContext {
             return .single(0)
         } else {
             return Signal { [weak self] subscriber in
+                // Quick attach hands the sheet a ready-made selection, so the first change event
+                // may never come; without a value now the panel counts 0 and draws its tabs.
+                subscriber.putNext(Int(self?.controller?.interaction?.selectionState?.count() ?? 0))
                 let disposable = self?.controller?.interaction?.selectionState?.selectionChangedSignal().start(next: { [weak self] value in
                     subscriber.putNext(Int(self?.controller?.interaction?.selectionState?.count() ?? 0))
                 }, error: { _ in }, completed: { })

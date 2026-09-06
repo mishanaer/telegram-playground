@@ -280,8 +280,11 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
     public let attachmentButtonContextSource: ContextControllerSourceView
     public let attachmentButtonBackground: GlassBackgroundView
     private let attachmentButtonIcon: UIImageView
+    /// The bottom 40x40 slot of the attachment capsule: what the long-press squeeze may transform.
+    private let attachmentButtonIconContainer = UIView()
     private let quickAttachCancelIcon: UIImageView
     private var isQuickAttachActive = false
+    private var isQuickAttachPreviewPlaybackSuspended = false
     private var isQuickAttachEditingMedia = false
     private var commentsButtonIcon: RasterizedCompositionMonochromeLayer?
     private var commentsButtonCenterIcon: UIImageView?
@@ -827,18 +830,24 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         self.attachmentButtonContextSource.addSubview(self.attachmentButtonBackground)
         self.attachmentButtonBackground.contentView.addSubview(self.attachmentButton)
         
+        self.attachmentButtonIconContainer.isUserInteractionEnabled = false
+        self.attachmentButtonBackground.contentView.addSubview(self.attachmentButtonIconContainer)
+
         self.attachmentButtonIcon = UIImageView()
         self.attachmentButtonIcon.isUserInteractionEnabled = false
         self.attachmentButtonIcon.contentMode = .center
-        self.attachmentButtonBackground.contentView.addSubview(self.attachmentButtonIcon)
+        self.attachmentButtonIcon.frame = CGRect(origin: CGPoint(), size: CGSize(width: 40.0, height: 40.0))
+        self.attachmentButtonIconContainer.addSubview(self.attachmentButtonIcon)
 
         self.quickAttachCancelIcon = UIImageView(image: UIImage(bundleImageName: "Navigation/Close")?.withRenderingMode(.alwaysTemplate))
         self.quickAttachCancelIcon.isUserInteractionEnabled = false
         self.quickAttachCancelIcon.contentMode = .center
         self.quickAttachCancelIcon.alpha = 0.0
+        // Frame before transform: UIKit ignores frame writes on a transformed view.
+        self.quickAttachCancelIcon.frame = CGRect(origin: CGPoint(), size: CGSize(width: 40.0, height: 40.0))
         self.quickAttachCancelIcon.transform = CGAffineTransform(rotationAngle: -.pi * 0.5).scaledBy(x: 0.5, y: 0.5)
-        self.attachmentButtonBackground.contentView.addSubview(self.quickAttachCancelIcon)
-        self.attachmentButtonContextSource.targetViewForActivationProgress = self.attachmentButtonBackground.contentView
+        self.attachmentButtonIconContainer.addSubview(self.quickAttachCancelIcon)
+        self.attachmentButtonContextSource.targetViewForActivationProgress = self.attachmentButtonIconContainer
         
         self.attachmentButtonDisabledNode = HighlightableButtonNode()
         self.searchLayoutClearButton = HighlightTrackingButton()
@@ -3662,15 +3671,11 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
 
         transition.updateFrame(view: self.attachmentButtonContextSource, frame: attachmentButtonFrame)
         transition.updateFrame(layer: self.attachmentButtonBackground.layer, frame: CGRect(origin: .zero, size: attachmentButtonFrame.size))
-        self.attachmentButtonContextSource.targetNodeForActivationProgressContentRect = CGRect(x: 0.0, y: attachmentButtonFrame.height - 40.0, width: 40.0, height: 40.0)
         // + tap target + disabled overlay + icon are pinned to the BOTTOM 40x40 slot of the capsule.
         transition.updateFrame(layer: self.attachmentButton.layer, frame: CGRect(origin: CGPoint(x: 0.0, y: attachmentButtonFrame.height - 40.0), size: CGSize(width: 40.0, height: 40.0)))
         transition.updateFrame(node: self.attachmentButtonDisabledNode, frame: CGRect(origin: CGPoint(x: attachmentButtonFrame.minX, y: attachmentButtonFrame.maxY - 40.0), size: CGSize(width: 40.0, height: 40.0)))
 
-        if let _ = self.attachmentButtonIcon.image {
-            transition.updateFrame(view: self.attachmentButtonIcon, frame: CGRect(origin: CGPoint(x: 0.0, y: attachmentButtonFrame.height - 40.0), size: CGSize(width: 40, height: 40)))
-        }
-        transition.updateFrame(view: self.quickAttachCancelIcon, frame: CGRect(origin: CGPoint(x: 0.0, y: attachmentButtonFrame.height - 40.0), size: CGSize(width: 40, height: 40)))
+        transition.updateFrame(view: self.attachmentButtonIconContainer, frame: CGRect(origin: CGPoint(x: 0.0, y: attachmentButtonFrame.height - 40.0), size: CGSize(width: 40.0, height: 40.0)))
         self.quickAttachCancelIcon.tintColor = self.attachmentButtonIcon.tintColor
 
         // AI button in the TOP 40x40 slot of the capsule (fades in with the 3-line rule).
@@ -5774,13 +5779,30 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         )
     }
 
+    /// Playback is off while the strip is held (the overlay blurs the panel live, and re-blurring a
+    /// playing video every frame stutters the fan) and while the attachment sheet covers the composer.
+    private var quickAttachPreviewsCanPlay: Bool {
+        return !self.isQuickAttachActive && !self.isQuickAttachPreviewPlaybackSuspended
+    }
+
+    private func updateQuickAttachPreviewPlayback() {
+        let canPlay = self.quickAttachPreviewsCanPlay
+        for preview in self.quickAttachPreviews {
+            preview.videoNode?.canAttachContent = canPlay
+        }
+    }
+
+    public func setQuickAttachPreviewPlaybackSuspended(_ suspended: Bool) {
+        guard self.isQuickAttachPreviewPlaybackSuspended != suspended else {
+            return
+        }
+        self.isQuickAttachPreviewPlaybackSuspended = suspended
+        self.updateQuickAttachPreviewPlayback()
+    }
+
     public func setQuickAttachActive(_ active: Bool, animated: Bool) {
         self.isQuickAttachActive = active
-        // The quick attach overlay blurs the panel live; a playing video under that blur makes the
-        // render server re-blur every frame and the fan stutters. Detach playback for the hold.
-        for preview in self.quickAttachPreviews {
-            preview.videoNode?.canAttachContent = !active
-        }
+        self.updateQuickAttachPreviewPlayback()
         let changes = {
             self.attachmentButtonIcon.alpha = active ? 0.0 : 1.0
             self.attachmentButtonIcon.transform = active ? CGAffineTransform(rotationAngle: .pi * 0.5).scaledBy(x: 0.5, y: 0.5) : .identity
@@ -5932,7 +5954,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                 autoplay: true
             )
             node.isUserInteractionEnabled = false
-            node.canAttachContent = true
+            node.canAttachContent = self.quickAttachPreviewsCanPlay
             container.addSubview(node.view)
             videoNode = node
 

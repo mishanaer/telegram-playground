@@ -92,7 +92,7 @@ final class QuickAttachRecentPhotosProvider {
                         fetchResult: fetchResult,
                         index: index,
                         targetSize: targetSize,
-                        exact: false,
+                        exact: true,
                         deliveryMode: .opportunistic,
                         synchronous: false
                     )

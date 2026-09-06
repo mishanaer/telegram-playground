@@ -4434,8 +4434,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         mediaReference: AnyMediaReference,
         peerId: PeerId
     ) -> Signal<QuickAttachItem, NoError>? {
-        // Large enough for the preview grid, keeping the media's own aspect ratio.
-        let boundingSize = CGSize(width: 320.0, height: 320.0)
+        // The same budget the picker's own preview grid uses (MediaPickerSelectedListNode):
+        // 320pt at the screen's scale, keeping the media's own aspect ratio.
+        let previewSide = 320.0 * min(2.0, UIScreenScale)
+        let boundingSize = CGSize(width: previewSide, height: previewSide)
         var imageDimensions: CGSize?
         var imageSignal: Signal<(TransformImageArguments) -> DrawingContext?, NoError>?
 

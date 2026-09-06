@@ -22,7 +22,7 @@ private struct QuickAttachDemoDialog {
 private let quickAttachDemoDialogs: [QuickAttachDemoDialog] = [
     QuickAttachDemoDialog(
         peerId: QuickAttachDemo.chatPeerId,
-        firstName: "Ksuscha",
+        firstName: "Ksusha",
         lastName: nil,
         color: .blue,
         unreadCount: 0,

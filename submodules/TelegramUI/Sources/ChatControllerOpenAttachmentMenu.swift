@@ -596,6 +596,7 @@ extension ChatControllerImpl {
                 attachmentController.didDismiss = { [weak self] in
                     self?.attachmentController = nil
                     self?.canReadHistory.set(true)
+                    self?.chatDisplayNode.textInputPanelNode?.setQuickAttachPreviewPlaybackSuspended(false)
                 }
                 attachmentController.getSourceRect = { [weak self] in
                     if let strongSelf = self {
@@ -1218,6 +1219,9 @@ extension ChatControllerImpl {
                     attachmentController.navigationPresentation = .flatModal
                     strongSelf.push(attachmentController)
                     strongSelf.attachmentController = attachmentController
+                    // The composer sits behind the sheet: its video tiles are invisible but keep
+                    // decoding, which shows up as stutter while the grid scrolls.
+                    strongSelf.chatDisplayNode.textInputPanelNode?.setQuickAttachPreviewPlaybackSuspended(true)
                     
                     if case let .bot(botId, _, botJustInstalled) = subject, botJustInstalled {
                         if let button = allButtons.first(where: { button in
@@ -1757,7 +1761,11 @@ extension ChatControllerImpl {
             let limit = self.chatDisplayNode.isQuickAttachEditing ? items.count + self.chatDisplayNode.quickAttachEditingRoom : 100
             selectionContext = TGMediaSelectionContext(groupingAllowed: false, selectionLimit: Int32(limit))
             for item in items {
-                selectionContext?.setItem(QuickAttachPreviewItem(identifier: item.identifier, media: item.media, image: item.image), selected: true)
+                if let asset = PHAsset.fetchAssets(withLocalIdentifiers: [item.identifier], options: nil).firstObject, let mediaAsset = TGMediaAsset(phAsset: asset) {
+                    selectionContext?.setItem(mediaAsset, selected: true)
+                } else {
+                    selectionContext?.setItem(QuickAttachPreviewItem(identifier: item.identifier, media: item.media, image: item.image), selected: true)
+                }
             }
             selectionContext?.selectionLimitExceeded = {
                 HapticFeedback().error()

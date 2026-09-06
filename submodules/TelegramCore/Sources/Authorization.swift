@@ -75,7 +75,7 @@ public enum QuickAttachDemo {
         let chatPeer = TelegramUser(
             id: self.chatPeerId,
             accessHash: nil,
-            firstName: "Ksuscha",
+            firstName: "Ksusha",
             lastName: nil,
             username: nil,
             phone: nil,
