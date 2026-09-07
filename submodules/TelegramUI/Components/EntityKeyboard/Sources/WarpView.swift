@@ -41,9 +41,6 @@ public final class WarpView: UIView {
     }
     
     public let contentView: PortalSourceView
-    public var isAvailable: Bool {
-        return !self.warpViews.isEmpty
-    }
     
     private let clippingView: UIView
     
@@ -51,11 +48,7 @@ public final class WarpView: UIView {
     private let warpMaskContainer: UIView
     private let warpMaskGradientLayer: SimpleGradientLayer
     
-    public override convenience init(frame: CGRect) {
-        self.init(frame: frame, warpViewCount: 8)
-    }
-
-    public init(frame: CGRect, warpViewCount: Int) {
+    public override init(frame: CGRect) {
         self.contentView = PortalSourceView()
         self.clippingView = UIView()
         
@@ -71,7 +64,7 @@ public final class WarpView: UIView {
         self.addSubview(self.clippingView)
         self.addSubview(self.warpMaskContainer)
         
-        for _ in 0 ..< warpViewCount {
+        for _ in 0 ..< 8 {
             if let warpView = WarpPartView(contentView: self.contentView) {
                 self.warpViews.append(warpView)
                 self.warpMaskContainer.addSubview(warpView)
@@ -102,7 +95,7 @@ public final class WarpView: UIView {
         let gradientEndPoint: CGPoint
     }
     
-    private func geometry(size: CGSize, topInset: CGFloat, warpHeight: CGFloat, fadeBottomEdge: Bool) -> Geometry {
+    private func geometry(size: CGSize, topInset: CGFloat, warpHeight: CGFloat) -> Geometry {
         let allItemsHeight = warpHeight * 0.5
         var parts: [Geometry.Part] = []
         for i in 0 ..< self.warpViews.count {
@@ -145,7 +138,7 @@ public final class WarpView: UIView {
         for i in 0 ..< numStops {
             let step = CGFloat(i) / CGFloat(numStops - 1)
             locations.append(step as NSNumber)
-            colors.append(UIColor.black.withAlphaComponent(fadeBottomEdge ? 1.0 - step * step : 1.0).cgColor)
+            colors.append(UIColor.black.withAlphaComponent(1.0 - step * step).cgColor)
         }
         let gradientHeight: CGFloat = 6.0
         
@@ -171,8 +164,8 @@ public final class WarpView: UIView {
         self.warpMaskGradientLayer.type = .axial
     }
     
-    public func update(size: CGSize, topInset: CGFloat, warpHeight: CGFloat, fadeBottomEdge: Bool = true, theme: PresentationTheme, transition: ComponentTransition) {
-        let geometry = self.geometry(size: size, topInset: topInset, warpHeight: warpHeight, fadeBottomEdge: fadeBottomEdge)
+    public func update(size: CGSize, topInset: CGFloat, warpHeight: CGFloat, theme: PresentationTheme, transition: ComponentTransition) {
+        let geometry = self.geometry(size: size, topInset: topInset, warpHeight: warpHeight)
         transition.setFrame(view: self.contentView, frame: geometry.contentFrame)
         for (i, part) in geometry.parts.enumerated() {
             transition.setPosition(view: self.warpViews[i], position: part.position)
@@ -192,8 +185,8 @@ public final class WarpView: UIView {
     /// host animates its own frame with that transition: `ComponentTransition` cannot carry a
     /// `.customSpring` curve and falls back to a plain spring, so the bend would follow a different
     /// curve than the sheet it sits in and visibly detach from the bottom edge while it settles.
-    public func update(size: CGSize, topInset: CGFloat, warpHeight: CGFloat, fadeBottomEdge: Bool = true, theme: PresentationTheme, layoutTransition: ContainedViewLayoutTransition) {
-        let geometry = self.geometry(size: size, topInset: topInset, warpHeight: warpHeight, fadeBottomEdge: fadeBottomEdge)
+    public func update(size: CGSize, topInset: CGFloat, warpHeight: CGFloat, theme: PresentationTheme, layoutTransition: ContainedViewLayoutTransition) {
+        let geometry = self.geometry(size: size, topInset: topInset, warpHeight: warpHeight)
         layoutTransition.updateFrame(view: self.contentView, frame: geometry.contentFrame)
         for (i, part) in geometry.parts.enumerated() {
             layoutTransition.updatePosition(layer: self.warpViews[i].layer, position: part.position)

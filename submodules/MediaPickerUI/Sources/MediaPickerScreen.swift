@@ -425,8 +425,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             self.backgroundNode.backgroundColor = self.presentationData.theme.list.plainBackgroundColor
 
             if controller.warpContentsOnBottomEdge {
-                let bottomWarpView = WarpView(frame: .zero, warpViewCount: 8)
-                self.bottomWarpView = bottomWarpView.isAvailable ? bottomWarpView : nil
+                self.bottomWarpView = WarpView(frame: .zero)
             } else {
                 self.bottomWarpView = nil
             }
@@ -1924,7 +1923,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 // The exact transition, not ComponentTransition(transition): the sheet settles with a custom
                 // spring that the conversion downgrades to a plain spring, and the bend would then slide
                 // against the bottom edge while the sheet finishes expanding.
-                bottomWarpView.update(size: warpBounds.size, topInset: 0.0, warpHeight: 100.0, fadeBottomEdge: false, theme: self.presentationData.theme, layoutTransition: transition)
+                bottomWarpView.update(size: warpBounds.size, topInset: 0.0, warpHeight: 100.0, theme: self.presentationData.theme, layoutTransition: transition)
             }
             
             if let cameraRect {
