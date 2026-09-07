@@ -348,6 +348,14 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         fileprivate let bottomEdgeEffectView: EdgeEffectView
         
         fileprivate let cameraWrapperView: UIView
+        /// Holds the camera views. Under the warp it is a sibling of the portal source, not a child:
+        /// the camera is an AVSampleBufferDisplayLayer, and eight portal clones of a live video layer
+        /// cost far more than the eight clones of the still photo cells. It never reaches the bottom
+        /// bend anyway. Its frame tracks the grid's content offset; a transparent view stays in the
+        /// scroll view so taps and drags over the camera tile keep working.
+        fileprivate let cameraHostView = UIView()
+        fileprivate let cameraTapView = UIView()
+        private var cameraContentRect: CGRect?
         fileprivate var cameraView: TGAttachmentCameraView?
         
         fileprivate var modernCamera: Camera?
@@ -485,7 +493,15 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 }
             }
             
-            self.gridNode.scrollView.addSubview(self.cameraWrapperView)
+            self.cameraHostView.addSubview(self.cameraWrapperView)
+            if let bottomWarpView = self.bottomWarpView {
+                bottomWarpView.addSubview(self.cameraHostView)
+                self.cameraHostView.isUserInteractionEnabled = false
+                self.cameraTapView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.cameraTapViewTapped)))
+                self.gridNode.scrollView.addSubview(self.cameraTapView)
+            } else {
+                self.gridNode.scrollView.addSubview(self.cameraHostView)
+            }
             
             let selectedCollection = controller.selectedCollection.get()
             let preloadPromise = self.preloadPromise
@@ -543,6 +559,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                     return
                 }
                 self.currentContentOffset = offset
+                self.updateCameraHostFrame(transition: .immediate)
                 self.updateNavigation(transition: .immediate)
                 self.updateTopEdgeEffect()
             }
@@ -712,8 +729,8 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                     } else if let _ = self.modernCameraView {
                         cameraView = self.cameraWrapperView
                     }
-                    if let cameraView {
-                        self.isCameraPreviewVisible = self.gridNode.scrollView.bounds.intersects(cameraView.frame)
+                    if cameraView != nil, let cameraContentRect = self.cameraContentRect {
+                        self.isCameraPreviewVisible = self.gridNode.scrollView.bounds.intersects(cameraContentRect)
                         self.updateIsCameraActive()
                     }
                 }
@@ -775,7 +792,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                     cameraView.startPreview()
                 }
                 
-                self.gridNode.scrollView.addSubview(cameraView)
+                self.cameraHostView.addSubview(cameraView)
                 self.gridNode.addSubnode(self.cameraActivateAreaNode)
             } else if useModernCamera, !Camera.isIpad {
                 #if !targetEnvironment(simulator)
@@ -909,6 +926,32 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             selectionGesture.sideInset = 44.0
             self.gridNode.view.addGestureRecognizer(selectionGesture)
             self.selectionGesture = selectionGesture
+        }
+        
+        /// The host lives in scroll-content coordinates when there is no warp, and in the warp's
+        /// coordinates (following the content offset) when the grid is the portal source.
+        private func updateCameraHostFrame(transition: ContainedViewLayoutTransition) {
+            guard let cameraContentRect = self.cameraContentRect else {
+                return
+            }
+            if let bottomWarpView = self.bottomWarpView {
+                let frame = self.gridNode.scrollView.convert(cameraContentRect, to: bottomWarpView)
+                if transition.isAnimated {
+                    transition.updateFrame(view: self.cameraHostView, frame: frame)
+                } else {
+                    self.cameraHostView.frame = frame
+                }
+            } else {
+                transition.updateFrame(view: self.cameraHostView, frame: cameraContentRect)
+            }
+        }
+        
+        @objc private func cameraTapViewTapped() {
+            if let cameraView = self.cameraView {
+                cameraView.pressed?()
+            } else {
+                self.cameraTapped()
+            }
         }
         
         @objc private func cameraTapped() {
@@ -1948,8 +1991,13 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             
             if let cameraView {
                 if let cameraRect = cameraRect {
+                    self.cameraContentRect = cameraRect
+                    self.updateCameraHostFrame(transition: transition)
+                    self.cameraTapView.frame = cameraRect
+                    self.cameraTapView.isHidden = false
+                    self.cameraHostView.isHidden = false
                     if cameraView.superview == self.cameraWrapperView {
-                        transition.updateFrame(view: self.cameraWrapperView, frame: cameraRect)
+                        transition.updateFrame(view: self.cameraWrapperView, frame: CGRect(origin: CGPoint(), size: cameraRect.size))
                         
                         let screenWidth = min(layout.deviceMetrics.screenSize.width, layout.deviceMetrics.screenSize.height)
                         let cameraFullSize = CGSize(width: screenWidth, height: floorToScreenPixels(layout.size.width * 1.77778))
@@ -1959,13 +2007,16 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                         cameraView.center = CGPoint(x: cameraRect.size.width / 2.0, y: cameraRect.size.height / 2.0)
                         cameraView.transform = CGAffineTransform(scaleX: cameraScale, y: cameraScale)
 
-                    } else if cameraView.superview == self.gridNode.scrollView {
-                        transition.updateFrame(view: cameraView, frame: cameraRect)
+                    } else if cameraView.superview == self.cameraHostView {
+                        transition.updateFrame(view: cameraView, frame: CGRect(origin: CGPoint(), size: cameraRect.size))
                     }
                     self.cameraActivateAreaNode.frame = cameraRect
                     self.cameraWrapperView.isHidden = false
                     cameraView.isHidden = false
                 } else {
+                    self.cameraContentRect = nil
+                    self.cameraHostView.isHidden = true
+                    self.cameraTapView.isHidden = true
                     self.cameraWrapperView.isHidden = true
                     cameraView.isHidden = true
                 }
