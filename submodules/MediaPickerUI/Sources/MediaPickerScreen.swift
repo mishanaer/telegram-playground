@@ -1921,7 +1921,10 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 transition.updateFrame(view: bottomWarpView, frame: warpBounds)
                 // topInset clips the warp's content view: anything above it is cut, so the grid must
                 // start at 0 to keep scrolling under the header, where the top edge effect blurs it.
-                bottomWarpView.update(size: warpBounds.size, topInset: 0.0, warpHeight: 100.0, fadeBottomEdge: false, theme: self.presentationData.theme, transition: ComponentTransition(transition))
+                // The exact transition, not ComponentTransition(transition): the sheet settles with a custom
+                // spring that the conversion downgrades to a plain spring, and the bend would then slide
+                // against the bottom edge while the sheet finishes expanding.
+                bottomWarpView.update(size: warpBounds.size, topInset: 0.0, warpHeight: 100.0, fadeBottomEdge: false, theme: self.presentationData.theme, layoutTransition: transition)
             }
             
             if let cameraRect {
