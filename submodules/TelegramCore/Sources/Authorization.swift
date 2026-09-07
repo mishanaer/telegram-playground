@@ -42,12 +42,10 @@ public enum QuickAttachDemo {
     public static let accountPeerId = PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(900000001))
     public static let chatPeerId = PeerId(namespace: Namespaces.Peer.CloudUser, id: PeerId.Id._internalFromInt64Value(900000002))
 
+    // Keyed on the bundle id alone, not on DEBUG: release device builds of the demo must stay in
+    // demo mode too, or the local account tries to sync with real servers and hangs on "Updating".
     public static var isEnabled: Bool {
-        #if DEBUG
         return Bundle.main.bundleIdentifier?.hasSuffix(".TelegramQuickAttach") == true
-        #else
-        return false
-        #endif
     }
 
     public static func authorizeLocalAccount(accountManager: AccountManager<TelegramAccountManagerTypes>, account: UnauthorizedAccount) -> Signal<Never, NoError> {
