@@ -4493,6 +4493,26 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
 
         if let imageReference = mediaReference.concrete(TelegramMediaImage.self), let representation = largestRepresentationForPhoto(imageReference.media) {
             imageDimensions = representation.dimensions.cgSize
+            if let localResource = representation.resource as? LocalFileReferenceMediaResource {
+                // A fresh export: the full-size file is on disk but reaches the media box only when the
+                // message is sent, so chatMessagePhoto never gets past the inline blurred thumbnail.
+                // Decode the file itself.
+                let path = localResource.localFilePath
+                let fittedSize = representation.dimensions.cgSize.aspectFitted(boundingSize)
+                let media = mediaReference.media
+                return Signal { subscriber in
+                    if let image = UIImage(contentsOfFile: path), let scaled = generateImage(fittedSize, contextGenerator: { size, context in
+                        UIGraphicsPushContext(context)
+                        image.draw(in: CGRect(origin: CGPoint(), size: size))
+                        UIGraphicsPopContext()
+                    }, scale: 1.0) {
+                        subscriber.putNext((identifier: identifier, media: media, image: scaled, hasSpoiler: hasSpoiler))
+                    }
+                    subscriber.putCompletion()
+                    return EmptyDisposable
+                }
+                |> runOn(Queue.concurrentDefaultQueue())
+            }
             // Not chatMessagePhotoThumbnail: that one serves a 180x180 cached copy whatever size is
             // asked for, which is what made the preview grid blurry.
             imageSignal = chatMessagePhoto(

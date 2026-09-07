@@ -443,6 +443,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             if controller.warpContentsOnBottomEdge {
                 self.bottomWarpView = WarpView(frame: .zero)
                 self.bottomWarpView?.fadesBottomEdge = false
+                self.bottomWarpView?.usesPerspective = false
             } else {
                 self.bottomWarpView = nil
             }
