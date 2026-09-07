@@ -118,6 +118,10 @@ public final class WarpView: UIView {
         self.clippingView.clipsToBounds = true
         
         transition.setFrame(view: self.warpMaskContainer, frame: CGRect(origin: CGPoint(x: 0.0, y: size.height - allItemsHeight), size: CGSize(width: size.width, height: allItemsHeight)))
+        // Without the fade every gradient stop is opaque, so the mask only buys an offscreen pass over
+        // the whole band each frame. A plain rectangular clip keeps the slices in the same box for free.
+        self.warpMaskContainer.layer.mask = fadeBottomEdge ? self.warpMaskGradientLayer : nil
+        self.warpMaskContainer.clipsToBounds = !fadeBottomEdge
         
         var locations: [NSNumber] = []
         var colors: [CGColor] = []
