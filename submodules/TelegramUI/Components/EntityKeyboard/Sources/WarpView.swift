@@ -28,7 +28,13 @@ public final class WarpView: UIView {
         }
         
         func update(containerSize: CGSize, rect: CGRect, transition: ComponentTransition) {
-            transition.setFrame(view: self.cloneView.view, frame: CGRect(origin: CGPoint(x: -rect.minX, y: -rect.minY), size: CGSize(width: containerSize.width, height: containerSize.height)))
+            // The portal used to span the whole source and rely on this view's clip to show its band,
+            // so every slice asked the render server for a full copy of the content. Give the portal
+            // the band's own extent and pick the source region through bounds.origin (the way a
+            // scroll view offsets its content): same pixels, a strip's worth of work per slice.
+            let view = self.cloneView.view
+            transition.setBounds(view: view, bounds: CGRect(origin: CGPoint(x: rect.minX, y: rect.minY), size: CGSize(width: containerSize.width, height: rect.height)))
+            transition.setPosition(view: view, position: CGPoint(x: containerSize.width / 2.0, y: rect.height / 2.0))
         }
     }
     
