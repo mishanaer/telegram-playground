@@ -3746,7 +3746,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                 }
             }
             previewButton.button.addTarget(self, action: #selector(self.previewButtonPressed), for: .touchUpInside)
-            previewButton.icon.image = generateQuickAttachEyeImage()
+            previewButton.icon.image = UIImage(bundleImageName: "Peer Info/RefProgram/IntroListEye")?.withRenderingMode(.alwaysTemplate)
             self.attachmentButtonBackground.contentView.addSubview(previewButton.icon)
             self.attachmentButtonBackground.contentView.addSubview(previewButton.button)
         }
@@ -6542,25 +6542,5 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
     public func makeAttachmentMenuTransition(accessoryPanelNode: ASDisplayNode?) -> AttachmentInputPanelTransition {
         return AttachmentInputPanelTransition(inputNode: self, accessoryPanelNode: accessoryPanelNode, menuButtonNode: self.menuButton, menuButtonBackgroundView: self.menuButtonBackgroundView, menuIconNode: self.menuButtonIconNode, menuTextNode: self.menuButtonTextNode, prepareForDismiss: { self.menuButtonIconNode.enqueueState(.app, animated: false) })
     }
-}
-
-/// Drawn rather than taken from the catalog: the catalog's eyes are thinner than the paperclip
-/// next to it. Same 30pt canvas and ~21pt glyph width as `Chat/Input/Text/IconAttachment`, whose
-/// stroke measures 5px in the @3x bitmap — so 5/3pt here, not a round 2pt (which renders 1px bolder).
-private func generateQuickAttachEyeImage() -> UIImage? {
-    return generateImage(CGSize(width: 30.0, height: 30.0), rotatedContext: { size, context in
-        context.clear(CGRect(origin: CGPoint(), size: size))
-        context.setStrokeColor(UIColor.white.cgColor)
-        context.setLineWidth(5.0 / 3.0)
-        context.setLineCap(.round)
-        context.setLineJoin(.round)
-        let path = CGMutablePath()
-        path.move(to: CGPoint(x: 4.5, y: 15.0))
-        path.addQuadCurve(to: CGPoint(x: 25.5, y: 15.0), control: CGPoint(x: 15.0, y: 3.5))
-        path.addQuadCurve(to: CGPoint(x: 4.5, y: 15.0), control: CGPoint(x: 15.0, y: 26.5))
-        context.addPath(path)
-        context.strokePath()
-        context.strokeEllipse(in: CGRect(x: 15.0 - 4.0, y: 15.0 - 4.0, width: 8.0, height: 8.0))
-    })?.withRenderingMode(.alwaysTemplate)
 }
 
