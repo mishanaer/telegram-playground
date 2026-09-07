@@ -90,14 +90,14 @@ extension ChatControllerImpl {
     }
 
     /// Sends the composer's attachments as albums of up to 10, the input text as the first caption.
-    func sendQuickAttachMedia(_ media: [Media]) {
-        guard !media.isEmpty else {
+    func sendQuickAttachMedia(_ items: [(media: Media, hasSpoiler: Bool)]) {
+        guard !items.isEmpty else {
             return
         }
         let inputText = self.presentationInterfaceState.interfaceState.effectiveInputState.inputText
         var messages: [EnqueueMessage] = []
-        for chunkStart in stride(from: 0, to: media.count, by: 10) {
-            let chunk = media[chunkStart ..< min(chunkStart + 10, media.count)]
+        for chunkStart in stride(from: 0, to: items.count, by: 10) {
+            let chunk = items[chunkStart ..< min(chunkStart + 10, items.count)]
             let groupingKey: Int64? = chunk.count > 1 ? Int64.random(in: 1 ... Int64.max) : nil
             for item in chunk {
                 var text = ""
@@ -109,7 +109,10 @@ extension ChatControllerImpl {
                         attributes.append(TextEntitiesMessageAttribute(entities: entities))
                     }
                 }
-                messages.append(.message(text: text, attributes: attributes, inlineStickers: [:], mediaReference: .standalone(media: item), threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: groupingKey, correlationId: nil, bubbleUpEmojiOrStickersets: []))
+                if item.hasSpoiler {
+                    attributes.append(MediaSpoilerMessageAttribute())
+                }
+                messages.append(.message(text: text, attributes: attributes, inlineStickers: [:], mediaReference: .standalone(media: item.media), threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: groupingKey, correlationId: nil, bubbleUpEmojiOrStickersets: []))
             }
         }
         if !inputText.string.isEmpty {
@@ -145,17 +148,27 @@ extension ChatControllerImpl {
 
         let existing = Set(self.chatDisplayNode.quickAttachItems.map(\.identifier))
         var kept: [String] = []
+        var spoilers: [String: Bool] = [:]
         var added: [TGMediaSelectableItem] = []
         for item in controller.selectedItems {
+            let keptIdentifier: String?
             if let preview = item as? QuickAttachPreviewItem {
-                kept.append(preview.identifier)
+                keptIdentifier = preview.identifier
             } else if let identifier = item.uniqueIdentifier, existing.contains(identifier) {
-                kept.append(identifier)
+                keptIdentifier = identifier
+            } else {
+                keptIdentifier = nil
+            }
+            if let keptIdentifier {
+                kept.append(keptIdentifier)
+                if let editable = item as? (NSObject & TGMediaEditableItem), let editingContext = controller.editingContext {
+                    spoilers[keptIdentifier] = editingContext.spoiler(for: editable)
+                }
             } else {
                 added.append(item)
             }
         }
-        self.chatDisplayNode.setQuickAttachOrder(kept)
+        self.chatDisplayNode.setQuickAttachOrder(kept, spoilers: spoilers)
         if !added.isEmpty, let selectionContext = TGMediaSelectionContext(groupingAllowed: false, selectionLimit: Int32(added.count)) {
             for item in added {
                 selectionContext.setItem(item, selected: true)
@@ -1756,15 +1769,21 @@ extension ChatControllerImpl {
         // preview grid describe the message as it stands. Editing an album keeps upstream's cap
         // mechanism: the context refuses the extra item and reports it (as in slowmode chats).
         var selectionContext: TGMediaSelectionContext?
+        var preselectedSpoilers: [NSObject & TGMediaEditableItem] = []
         if QuickAttachDemo.isEnabled {
             let items = self.chatDisplayNode.quickAttachItems
             let limit = self.chatDisplayNode.isQuickAttachEditing ? items.count + self.chatDisplayNode.quickAttachEditingRoom : 100
             selectionContext = TGMediaSelectionContext(groupingAllowed: false, selectionLimit: Int32(limit))
             for item in items {
+                let selectable: NSObject & TGMediaSelectableItem & TGMediaEditableItem
                 if let asset = PHAsset.fetchAssets(withLocalIdentifiers: [item.identifier], options: nil).firstObject, let mediaAsset = TGMediaAsset(phAsset: asset) {
-                    selectionContext?.setItem(mediaAsset, selected: true)
+                    selectable = mediaAsset
                 } else {
-                    selectionContext?.setItem(QuickAttachPreviewItem(identifier: item.identifier, media: item.media, image: item.image), selected: true)
+                    selectable = QuickAttachPreviewItem(identifier: item.identifier, media: item.media, image: item.image)
+                }
+                selectionContext?.setItem(selectable, selected: true)
+                if item.hasSpoiler {
+                    preselectedSpoilers.append(selectable)
                 }
             }
             selectionContext?.selectionLimitExceeded = {
@@ -1791,6 +1810,9 @@ extension ChatControllerImpl {
             displayBottomEdgeEffect: !self.chatDisplayNode.isQuickAttachEditing,
             warpContentsOnBottomEdge: true
         )
+        for item in preselectedSpoilers {
+            controller.editingContext?.setSpoiler(true, for: item)
+        }
         controller.openBoost = { [weak self, weak controller] in
             if let self {
                 controller?.dismiss()

@@ -26,6 +26,7 @@ swift_library(
         "//submodules/AvatarNode",
         "//submodules/ContextUI",
         "//submodules/InvisibleInkDustNode",
+        "//submodules/ImageBlur",
         "//submodules/TextInputMenu",
         "//submodules/Pasteboard",
         "//submodules/ChatPresentationInterfaceState",

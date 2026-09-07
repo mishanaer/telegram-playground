@@ -20,6 +20,7 @@ import ObjCRuntimeUtils
 import AvatarNode
 import ContextUI
 import InvisibleInkDustNode
+import ImageBlur
 import TextInputMenu
 import Pasteboard
 import ChatPresentationInterfaceState
@@ -322,6 +323,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         let removeButton: UIButton
         let videoNode: UniversalVideoNode?
         let durationLabel: UILabel?
+        let spoilerNode: MediaDustNode?
     }
     private var quickAttachPreviews: [QuickAttachPreview] = []
     private var quickAttachPreviewScrollView: UIScrollView?
@@ -3174,6 +3176,10 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                     videoNode.frame = preview.container.bounds
                     videoNode.updateLayout(size: preview.container.bounds.size, transition: .immediate)
                 }
+                if let spoilerNode = preview.spoilerNode {
+                    spoilerNode.frame = preview.container.bounds
+                    spoilerNode.update(size: preview.container.bounds.size, color: .white, transition: .immediate)
+                }
                 if let durationLabel = preview.durationLabel, let pill = durationLabel.superview {
                     durationLabel.sizeToFit()
                     let pillSize = CGSize(width: durationLabel.bounds.width + 10.0, height: durationLabel.bounds.height + 4.0)
@@ -3740,7 +3746,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                 }
             }
             previewButton.button.addTarget(self, action: #selector(self.previewButtonPressed), for: .touchUpInside)
-            previewButton.icon.image = UIImage(bundleImageName: "Peer Info/RefProgram/IntroListEye")?.withRenderingMode(.alwaysTemplate)
+            previewButton.icon.image = generateQuickAttachEyeImage()
             self.attachmentButtonBackground.contentView.addSubview(previewButton.icon)
             self.attachmentButtonBackground.contentView.addSubview(previewButton.button)
         }
@@ -5741,7 +5747,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         let wasEmpty = self.quickAttachPreviews.isEmpty
         let currentBackgroundFrame = self.textInputContainerBackgroundView.convert(self.textInputContainerBackgroundView.bounds, to: coordinateView)
         let accessoryHeight = self.accessoryPanel?.view.view?.bounds.height ?? 0.0
-        let preview = self.makeQuickAttachPreview(identifier: identifier, image: image, media: nil)
+        let preview = self.makeQuickAttachPreview(identifier: identifier, image: image, media: nil, hasSpoiler: false)
         self.quickAttachPreviews.append(preview)
 
         let quickAttachPreviewScrollView: UIScrollView
@@ -5838,7 +5844,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         preview.removeButton.alpha = 1.0
     }
 
-    public func setQuickAttachPreviews(_ items: [(identifier: String, image: UIImage, media: Media?)], removable: Bool, animated: Bool) {
+    public func setQuickAttachPreviews(_ items: [(identifier: String, image: UIImage, media: Media?, hasSpoiler: Bool)], removable: Bool, animated: Bool) {
         for preview in self.quickAttachPreviews {
             preview.container.removeFromSuperview()
         }
@@ -5862,7 +5868,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
             self.installQuickAttachReorderGesture(on: scrollView)
 
             for item in items {
-                let preview = self.makeQuickAttachPreview(identifier: item.identifier, image: item.image, media: item.media)
+                let preview = self.makeQuickAttachPreview(identifier: item.identifier, image: item.image, media: item.media, hasSpoiler: item.hasSpoiler)
                 preview.container.alpha = 1.0
                 preview.removeButton.alpha = removable ? 1.0 : 0.0
                 preview.removeButton.isUserInteractionEnabled = removable
@@ -5925,13 +5931,14 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         }
     }
 
-    private func makeQuickAttachPreview(identifier: String, image: UIImage, media: Media?) -> QuickAttachPreview {
+    private func makeQuickAttachPreview(identifier: String, image: UIImage, media: Media?, hasSpoiler: Bool) -> QuickAttachPreview {
         let container = UIView(frame: .zero)
         container.alpha = 0.0
         container.isAccessibilityElement = false
         container.accessibilityLabel = "Attached photo"
 
-        let imageView = UIImageView(image: image)
+        // A spoiler tile is the blurred still under dust, like the bubble it will become.
+        let imageView = UIImageView(image: hasSpoiler ? (blurredImage(image, radius: 24.0) ?? image) : image)
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
         imageView.layer.cornerRadius = 10.0
@@ -5941,7 +5948,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         // Videos loop muted in the tile, the way chat bubbles autoplay, with the grid's duration badge.
         var videoNode: UniversalVideoNode?
         var durationLabel: UILabel?
-        if let context = self.context, let file = media as? TelegramMediaFile, file.isVideo {
+        if let context = self.context, let file = media as? TelegramMediaFile, file.isVideo, !hasSpoiler {
             let side = QuickAttachPreviewLayout.side
             let node = UniversalVideoNode(
                 context: context,
@@ -5983,7 +5990,18 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         removeButton.addTarget(self, action: #selector(self.removeQuickAttachPreview(_:)), for: .touchUpInside)
         container.addSubview(removeButton)
 
-        return QuickAttachPreview(identifier: identifier, container: container, imageView: imageView, removeButton: removeButton, videoNode: videoNode, durationLabel: durationLabel)
+        var spoilerNode: MediaDustNode?
+        if hasSpoiler {
+            let node = MediaDustNode(enableAnimations: true)
+            node.isUserInteractionEnabled = false
+            node.view.layer.cornerRadius = 10.0
+            node.view.layer.cornerCurve = .continuous
+            node.view.layer.masksToBounds = true
+            container.insertSubview(node.view, belowSubview: removeButton)
+            spoilerNode = node
+        }
+
+        return QuickAttachPreview(identifier: identifier, container: container, imageView: imageView, removeButton: removeButton, videoNode: videoNode, durationLabel: durationLabel, spoilerNode: spoilerNode)
     }
 
     @objc private func removeQuickAttachPreview(_ sender: UIButton) {
@@ -6525,3 +6543,24 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         return AttachmentInputPanelTransition(inputNode: self, accessoryPanelNode: accessoryPanelNode, menuButtonNode: self.menuButton, menuButtonBackgroundView: self.menuButtonBackgroundView, menuIconNode: self.menuButtonIconNode, menuTextNode: self.menuButtonTextNode, prepareForDismiss: { self.menuButtonIconNode.enqueueState(.app, animated: false) })
     }
 }
+
+/// Drawn rather than taken from the catalog: the catalog's eyes are thinner than the paperclip
+/// next to it. Same 30pt canvas and ~21pt glyph width as `Chat/Input/Text/IconAttachment`, whose
+/// stroke measures 5px in the @3x bitmap — so 5/3pt here, not a round 2pt (which renders 1px bolder).
+private func generateQuickAttachEyeImage() -> UIImage? {
+    return generateImage(CGSize(width: 30.0, height: 30.0), rotatedContext: { size, context in
+        context.clear(CGRect(origin: CGPoint(), size: size))
+        context.setStrokeColor(UIColor.white.cgColor)
+        context.setLineWidth(5.0 / 3.0)
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: 4.5, y: 15.0))
+        path.addQuadCurve(to: CGPoint(x: 25.5, y: 15.0), control: CGPoint(x: 15.0, y: 3.5))
+        path.addQuadCurve(to: CGPoint(x: 4.5, y: 15.0), control: CGPoint(x: 15.0, y: 26.5))
+        context.addPath(path)
+        context.strokePath()
+        context.strokeEllipse(in: CGRect(x: 15.0 - 4.0, y: 15.0 - 4.0, width: 8.0, height: 8.0))
+    })?.withRenderingMode(.alwaysTemplate)
+}
+

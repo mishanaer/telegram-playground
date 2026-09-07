@@ -289,7 +289,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     private var quickAttachOverlay: QuickAttachFlowOverlayView?
     private var quickAttachBackdrop: UIVisualEffectView?
     private var quickAttachButtonVisualRestoreState: (superview: UIView, index: Int, frame: CGRect)?
-    typealias QuickAttachItem = (identifier: String, media: Media?, image: UIImage)
+    typealias QuickAttachItem = (identifier: String, media: Media?, image: UIImage, hasSpoiler: Bool)
     /// Attachments of the message being composed. `media` is nil while a strip pick is still being
     /// exported through the picker pipeline.
     private var quickAttachSelections: [QuickAttachItem] = []
@@ -4248,7 +4248,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             return
         }
         self.restoreQuickAttachButtonVisual()
-        self.quickAttachSelections.append((identifier: assetIdentifier, media: nil, image: item.image))
+        self.quickAttachSelections.append((identifier: assetIdentifier, media: nil, image: item.image, hasSpoiler: false))
         self.convertQuickAttachAsset(asset, identifier: assetIdentifier)
         let previousTransition = self.overrideUpdateTextInputHeightTransition
         self.overrideUpdateTextInputHeightTransition = .animated(duration: 0.32, curve: .spring)
@@ -4332,7 +4332,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         guard !self.quickAttachSelections.isEmpty else {
             return false
         }
-        controller.sendQuickAttachMedia(self.quickAttachSelections.compactMap(\.media))
+        controller.sendQuickAttachMedia(self.quickAttachSelections.compactMap { item in item.media.map { (media: $0, hasSpoiler: item.hasSpoiler) } })
         self.clearQuickAttachSelection(animated: true)
         return true
     }
@@ -4373,7 +4373,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             self.quickAttachSelections[index].media = media
             // The strip flew in a 128pt thumbnail; replace it with a preview-grade image from the
             // exported media (this also lets a video tile start playing).
-            if let imageSignal = self.quickAttachItemSignal(identifier: identifier, mediaReference: .standalone(media: media), peerId: self.chatLocation.peerId ?? self.context.account.peerId) {
+            if let imageSignal = self.quickAttachItemSignal(identifier: identifier, mediaReference: .standalone(media: media), hasSpoiler: false, peerId: self.chatLocation.peerId ?? self.context.account.peerId) {
                 let imageDisposable = MetaDisposable()
                 self.quickAttachConversionDisposables.add(imageDisposable)
                 imageDisposable.set((imageSignal
@@ -4421,20 +4421,32 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     }
 
     private func refreshQuickAttachPreviews(animated: Bool) {
-        self.textInputPanelNode?.setQuickAttachPreviews(self.quickAttachItems.map { ($0.identifier, $0.image, $0.media) }, removable: true, animated: animated)
+        self.textInputPanelNode?.setQuickAttachPreviews(self.quickAttachItems.map { ($0.identifier, $0.image, $0.media, $0.hasSpoiler) }, removable: true, animated: animated)
     }
 
     /// Keeps only `identifiers`, in that order. The composer's drag reorder already has the row in
     /// place and skips the redraw; the picker collapsing its selection into the composer redraws.
-    func setQuickAttachOrder(_ identifiers: [String], refreshPreviews: Bool = true) {
+    func setQuickAttachOrder(_ identifiers: [String], spoilers: [String: Bool] = [:], refreshPreviews: Bool = true) {
+        // `spoilers` carries the sheet's spoiler toggles back for items that were already here.
+        func reordered(_ items: [QuickAttachItem]) -> [QuickAttachItem] {
+            return identifiers.compactMap { identifier in
+                guard var item = items.first(where: { $0.identifier == identifier }) else {
+                    return nil
+                }
+                if let hasSpoiler = spoilers[identifier] {
+                    item.hasSpoiler = hasSpoiler
+                }
+                return item
+            }
+        }
         if self.isQuickAttachEditing {
-            self.quickAttachEditingItems = identifiers.compactMap { identifier in self.quickAttachEditingItems.first(where: { $0.identifier == identifier }) }
+            self.quickAttachEditingItems = reordered(self.quickAttachEditingItems)
             if self.quickAttachEditingItems.isEmpty {
                 self.interfaceInteraction?.setupEditMessage(nil, { _ in })
                 return
             }
         } else {
-            self.quickAttachSelections = identifiers.compactMap { identifier in self.quickAttachSelections.first(where: { $0.identifier == identifier }) }
+            self.quickAttachSelections = reordered(self.quickAttachSelections)
         }
         if refreshPreviews {
             self.refreshQuickAttachPreviews(animated: true)
@@ -4444,6 +4456,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     private func quickAttachItemSignal(
         identifier: String,
         mediaReference: AnyMediaReference,
+        hasSpoiler: Bool,
         peerId: PeerId
     ) -> Signal<QuickAttachItem, NoError>? {
         // The same budget the picker's own preview grid uses (MediaPickerSelectedListNode):
@@ -4495,7 +4508,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             guard let image = transform(arguments)?.generateImage() else {
                 return .complete()
             }
-            return .single((identifier: identifier, media: mediaReference.media, image: image))
+            return .single((identifier: identifier, media: mediaReference.media, image: image, hasSpoiler: hasSpoiler))
         }
         |> take(1)
     }
@@ -4505,10 +4518,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             return
         }
 
-        let mediaReferences: [(identifier: String, mediaReference: AnyMediaReference)] = messages.compactMap { message in
+        let mediaReferences: [(identifier: String, mediaReference: AnyMediaReference, hasSpoiler: Bool)] = messages.compactMap { message in
             for media in message.media {
                 if media is TelegramMediaImage || media is TelegramMediaFile {
-                    return ("edit:\(message.id.namespace):\(message.id.id)", .message(message: MessageReference(message), media: media))
+                    return ("edit:\(message.id.namespace):\(message.id.id)", .message(message: MessageReference(message), media: media), message.attributes.contains { $0 is MediaSpoilerMessageAttribute })
                 }
             }
             return nil
@@ -4517,6 +4530,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             return self.quickAttachItemSignal(
                 identifier: item.identifier,
                 mediaReference: item.mediaReference,
+                hasSpoiler: item.hasSpoiler,
                 peerId: messageId.peerId
             )
         }
@@ -4537,7 +4551,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             }
             self.quickAttachEditingItems = items
             textInputPanelNode.customSendIsDisabled = items.isEmpty
-            textInputPanelNode.setQuickAttachPreviews(items.map { ($0.identifier, $0.image, $0.media) }, removable: true, animated: true)
+            textInputPanelNode.setQuickAttachPreviews(items.map { ($0.identifier, $0.image, $0.media, $0.hasSpoiler) }, removable: true, animated: true)
         }))
     }
 
@@ -4569,11 +4583,11 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         guard let textInputPanelNode = self.textInputPanelNode else {
             return
         }
-        var mediaReferences: [AnyMediaReference] = messages.compactMap { message in
-            guard case let .message(_, _, _, mediaReference, _, _, _, _, _, _) = message else {
+        var mediaReferences: [(mediaReference: AnyMediaReference, hasSpoiler: Bool)] = messages.compactMap { message in
+            guard case let .message(_, attributes, _, mediaReference, _, _, _, _, _, _) = message, let mediaReference else {
                 return nil
             }
-            return mediaReference
+            return (mediaReference, attributes.contains { $0 is MediaSpoilerMessageAttribute })
         }
         let isEditing = self.isQuickAttachEditing
         if isEditing {
@@ -4584,10 +4598,11 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             mediaReferences = Array(mediaReferences.prefix(room))
         }
         let peerId = self.chatLocation.peerId ?? self.context.account.peerId
-        let previewSignals = mediaReferences.compactMap { mediaReference in
+        let previewSignals = mediaReferences.compactMap { item in
             return self.quickAttachItemSignal(
                 identifier: "attach:\(UUID().uuidString)",
-                mediaReference: mediaReference,
+                mediaReference: item.mediaReference,
+                hasSpoiler: item.hasSpoiler,
                 peerId: peerId
             )
         }
