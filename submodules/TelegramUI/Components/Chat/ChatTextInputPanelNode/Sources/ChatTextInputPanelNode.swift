@@ -3169,6 +3169,14 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                 view: quickAttachPreviewScrollView,
                 frame: CGRect(x: 0.0, y: contentHeight, width: textInputWidth, height: QuickAttachPreviewLayout.rowHeight)
             )
+            // The glass capsule's content view does not clip to its rounded shape, so at the capsule's
+            // top the strip rounds its own top corners with the capsule's radius; otherwise the tiles
+            // poke out of the corners while scrolling.
+            let stripIsAtCapsuleTop = contentHeight.isZero
+            quickAttachPreviewScrollView.layer.cornerRadius = stripIsAtCapsuleTop ? floor(minimalInputHeight * 0.5) : 0.0
+            quickAttachPreviewScrollView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+            quickAttachPreviewScrollView.layer.cornerCurve = .continuous
+            quickAttachPreviewScrollView.clipsToBounds = true
             for (index, preview) in self.quickAttachPreviews.enumerated() {
                 if preview.identifier != self.quickAttachReorderingIdentifier {
                     transition.updateFrame(view: preview.container, frame: self.quickAttachPreviewFrame(index: index))

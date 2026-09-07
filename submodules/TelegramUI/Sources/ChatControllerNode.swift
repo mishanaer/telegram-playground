@@ -4514,12 +4514,24 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                 |> runOn(Queue.concurrentDefaultQueue())
             }
             // Not chatMessagePhotoThumbnail: that one serves a 180x180 cached copy whatever size is
-            // asked for, which is what made the preview grid blurry.
-            imageSignal = chatMessagePhoto(
+            // asked for, which is what made the preview grid blurry. chatMessagePhoto only watches the
+            // media box, so the full size (Photos library, temp file) is fetched alongside; without
+            // that it never gets past the inline blurred thumbnail.
+            let mediaBox = self.context.account.postbox.mediaBox
+            let photoSignal = chatMessagePhoto(
                 postbox: self.context.account.postbox,
                 userLocation: .peer(peerId),
                 photoReference: imageReference
             )
+            let fetchReference = imageReference.resourceReference(representation.resource)
+            imageSignal = Signal { subscriber in
+                let fetchDisposable = fetchedMediaResource(mediaBox: mediaBox, userLocation: .peer(peerId), userContentType: .image, reference: fetchReference).start()
+                let imageDisposable = photoSignal.start(next: { subscriber.putNext($0) }, completed: { subscriber.putCompletion() })
+                return ActionDisposable {
+                    fetchDisposable.dispose()
+                    imageDisposable.dispose()
+                }
+            }
         } else if let fileReference = mediaReference.concrete(TelegramMediaFile.self), let representation = largestImageRepresentation(fileReference.media.previewRepresentations) {
             imageDimensions = representation.dimensions.cgSize
             if fileReference.media.isVideo {
@@ -4658,20 +4670,36 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         self.quickAttachPendingAppends += 1
         let disposable = MetaDisposable()
         self.quickAttachConversionDisposables.add(disposable)
+        // The image signals emit more than once (blurred inline thumbnail first, the full size when it
+        // has been fetched): the first emission appends the items, later ones only refresh their images.
+        var didAppend = false
+        func merge(_ list: inout [QuickAttachItem], _ items: [QuickAttachItem]) {
+            for item in items {
+                if let index = list.firstIndex(where: { $0.identifier == item.identifier }) {
+                    list[index].image = item.image
+                } else {
+                    list.append(item)
+                }
+            }
+        }
         disposable.set((combineLatest(previewSignals)
         |> deliverOnMainQueue).start(next: { [weak self, weak textInputPanelNode] items in
             guard let self else {
                 return
             }
-            self.quickAttachPendingAppends -= 1
+            let isFirst = !didAppend
+            if isFirst {
+                didAppend = true
+                self.quickAttachPendingAppends -= 1
+            }
             if let textInputPanelNode, self.quickAttachEditingMessageId == editingMessageId {
                 if isEditing {
-                    self.quickAttachEditingItems.append(contentsOf: items)
+                    merge(&self.quickAttachEditingItems, items)
                     textInputPanelNode.customSendIsDisabled = false
                 } else {
-                    self.quickAttachSelections.append(contentsOf: items)
+                    merge(&self.quickAttachSelections, items)
                 }
-                self.refreshQuickAttachPreviews(animated: true)
+                self.refreshQuickAttachPreviews(animated: isFirst)
             }
             self.flushQuickAttachSendIfReady()
         }))

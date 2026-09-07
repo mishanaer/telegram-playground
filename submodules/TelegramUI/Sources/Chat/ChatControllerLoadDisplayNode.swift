@@ -1768,9 +1768,12 @@ extension ChatControllerImpl {
                 let _ = strongSelf.presentVoiceMessageDiscardAlert(action: {
                     if let message = strongSelf.chatDisplayNode.historyNode.messageInCurrentHistoryView(messageId)?._asMessage() {
                         let editMessages = strongSelf.chatDisplayNode.historyNode.messageGroupInCurrentHistoryView(messageId) ?? [message]
+                        // An album's caption lives on one of its messages; editing is opened from any tile, so
+                        // the composer takes the caption from whichever message carries it.
+                        let captionMessage = editMessages.first(where: { !$0.text.isEmpty || $0.attributes.contains(where: { $0 is RichTextMessageAttribute }) }) ?? message
                         strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, { state in
                             var entities: [MessageTextEntity] = []
-                            for attribute in message.attributes {
+                            for attribute in captionMessage.attributes {
                                 if let attribute = attribute as? TextEntitiesMessageAttribute {
                                     entities = attribute.entities
                                     break
@@ -1787,11 +1790,11 @@ extension ChatControllerImpl {
                             }
                             
                             let editInputState: ChatTextInputState
-                            if let richTextAttribute = message.attributes.first(where: { $0 is RichTextMessageAttribute }) as? RichTextMessageAttribute {
+                            if let richTextAttribute = captionMessage.attributes.first(where: { $0 is RichTextMessageAttribute }) as? RichTextMessageAttribute {
                                 let content = chatInputContent(fromInstantPage: richTextAttribute.instantPage)
                                 editInputState = ChatTextInputState(content: content, selectionRange: content.length ..< content.length)
                             } else {
-                                let inputText = chatInputStateStringWithAppliedEntities(message.text, entities: entities)
+                                let inputText = chatInputStateStringWithAppliedEntities(captionMessage.text, entities: entities)
                                 editInputState = ChatTextInputState(inputText: inputText)
                             }
                             var disableUrlPreviews: [String] = []

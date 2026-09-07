@@ -17,6 +17,7 @@ public final class WarpView: UIView {
             super.init(frame: CGRect())
             
             self.layer.anchorPoint = CGPoint(x: 0.5, y: 0.0)
+            self.layer.allowsEdgeAntialiasing = true
             
             self.clipsToBounds = true
             self.addSubview(cloneView.view)
@@ -99,10 +100,10 @@ public final class WarpView: UIView {
     /// sheet that fade shows whatever is behind the sheet, so the picker turns it off: the bend ends
     /// at the screen edge, where no fade is needed.
     public var fadesBottomEdge: Bool = true
-    /// The emoji keyboard bends with perspective; on a full-width photo grid the foreshortening
-    /// pulls the far rows in horizontally and the grid's vertical gaps bow into arcs at the bottom.
-    /// Without perspective the bend is a pure vertical compression and ends exactly at the frame.
-    public var usesPerspective: Bool = true
+    /// Perspective strength, 1 = the emoji keyboard's. The foreshortening pulls the far rows in
+    /// horizontally, so on a full-width photo grid the grid's vertical gaps bow into arcs at the
+    /// bottom; a lower value keeps the depth cue with proportionally smaller arcs, 0 is orthographic.
+    public var perspectiveStrength: CGFloat = 1.0
 
     private func geometry(size: CGSize, topInset: CGFloat, warpHeight: CGFloat) -> Geometry {
         let allItemsHeight = warpHeight * 0.5
@@ -123,9 +124,7 @@ public final class WarpView: UIView {
             
             var transform: CATransform3D
             transform = CATransform3DIdentity
-            if self.usesPerspective {
-                transform.m34 = 1.0 / (240.0 * warpHeight / 50.0)
-            }
+            transform.m34 = self.perspectiveStrength / (240.0 * warpHeight / 50.0)
             
             transform = CATransform3DTranslate(transform, 0.0, prevPt.x * allItemsHeight, (1.0 - prevPt.y) * allItemsHeight)
             transform = CATransform3DRotate(transform, angle, 1.0, 0.0, 0.0)
@@ -137,9 +136,9 @@ public final class WarpView: UIView {
             // well under 1pt), and the whole bend sits 2pt lower so its last slices cover the frame's
             // bottom rows (the top rows it leaves are under the flat content).
             let partHeight = itemLength + (self.fadesBottomEdge ? 0.0 : 3.0)
-            // With perspective the arc projects short and needs the offset to reach the bottom; the
-            // orthographic arc spans exactly the mask height from 0.
-            let partOffsetY: CGFloat = self.usesPerspective ? (self.fadesBottomEdge ? 4.0 : 6.0) : 0.0
+            // Perspective projects the arc short of the mask height; the offset makes up for it (in
+            // proportion to the strength; the orthographic arc spans exactly the mask height from 0).
+            let partOffsetY: CGFloat = (self.fadesBottomEdge ? 4.0 : 6.0) * self.perspectiveStrength
             parts.append(Geometry.Part(
                 position: CGPoint(x: rect.midX, y: partOffsetY),
                 bounds: CGRect(origin: CGPoint(), size: CGSize(width: size.width, height: partHeight)),
