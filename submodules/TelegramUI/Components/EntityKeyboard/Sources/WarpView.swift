@@ -95,6 +95,11 @@ public final class WarpView: UIView {
         let gradientEndPoint: CGPoint
     }
     
+    /// The emoji keyboard fades the last 6pt of the bend into its own opaque background. Over a glass
+    /// sheet that fade shows whatever is behind the sheet, so the picker turns it off: the bend ends
+    /// at the screen edge, where no fade is needed.
+    public var fadesBottomEdge: Bool = true
+
     private func geometry(size: CGSize, topInset: CGFloat, warpHeight: CGFloat) -> Geometry {
         let allItemsHeight = warpHeight * 0.5
         var parts: [Geometry.Part] = []
@@ -121,9 +126,15 @@ public final class WarpView: UIView {
             
             let positionY = size.height - allItemsHeight + 4.0 + CGFloat(i) * itemLength
             let rect = CGRect(origin: CGPoint(x: 0.0, y: positionY), size: CGSize(width: size.width, height: itemLength))
+            // Without the fade every row of the bend is visible: slices overlap by 3pt so the seams
+            // between them do not show the background (the steep last slices project a 3pt overlap to
+            // well under 1pt), and the whole bend sits 2pt lower so its last slices cover the frame's
+            // bottom rows (the top rows it leaves are under the flat content).
+            let partHeight = itemLength + (self.fadesBottomEdge ? 0.0 : 3.0)
+            let partOffsetY: CGFloat = self.fadesBottomEdge ? 4.0 : 6.0
             parts.append(Geometry.Part(
-                position: CGPoint(x: rect.midX, y: 4.0),
-                bounds: CGRect(origin: CGPoint(), size: CGSize(width: size.width, height: itemLength)),
+                position: CGPoint(x: rect.midX, y: partOffsetY),
+                bounds: CGRect(origin: CGPoint(), size: CGSize(width: size.width, height: partHeight)),
                 transform: transform,
                 rect: rect
             ))
@@ -138,7 +149,7 @@ public final class WarpView: UIView {
         for i in 0 ..< numStops {
             let step = CGFloat(i) / CGFloat(numStops - 1)
             locations.append(step as NSNumber)
-            colors.append(UIColor.black.withAlphaComponent(1.0 - step * step).cgColor)
+            colors.append(UIColor.black.withAlphaComponent(self.fadesBottomEdge ? 1.0 - step * step : 1.0).cgColor)
         }
         let gradientHeight: CGFloat = 6.0
         

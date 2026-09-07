@@ -442,6 +442,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
 
             if controller.warpContentsOnBottomEdge {
                 self.bottomWarpView = WarpView(frame: .zero)
+                self.bottomWarpView?.fadesBottomEdge = false
             } else {
                 self.bottomWarpView = nil
             }
@@ -1930,8 +1931,11 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             self.scrollingArea.frame = innerBounds
             
             if let backgroundView = self.backgroundView {
-                backgroundView.update(size: bounds.size, cornerRadius: 0.0, isDark: self.presentationData.theme.overallDarkAppearance, tintColor: .init(kind: .custom(style: .default, color: self.presentationData.theme.list.plainBackgroundColor)), transition: ComponentTransition(transition))
-                transition.updateFrame(view: backgroundView, frame: innerBounds)
+                // The glass draws a light rim around its edge; run it 4pt past the bottom so the clipped
+                // container hides the bottom rim instead of showing it as a hairline along the sheet's edge.
+                let glassFrame = CGRect(origin: innerBounds.origin, size: CGSize(width: innerBounds.width, height: innerBounds.height + 4.0))
+                backgroundView.update(size: glassFrame.size, cornerRadius: 0.0, isDark: self.presentationData.theme.overallDarkAppearance, tintColor: .init(kind: .custom(style: .default, color: self.presentationData.theme.list.plainBackgroundColor)), transition: ComponentTransition(transition))
+                transition.updateFrame(view: backgroundView, frame: glassFrame)
             } else {
                 transition.updateFrame(node: self.backgroundNode, frame: innerBounds)
                 self.backgroundNode.update(size: bounds.size, transition: transition)
