@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import Display
 import AsyncDisplayKit
+import Postbox
 import TelegramCore
 import SwiftSignalKit
 import AccountContext
@@ -31,6 +32,7 @@ import EdgeEffect
 import ComponentFlow
 import BundleIconComponent
 import LottieComponent
+import SolidRoundedButtonNode
 import GlassBarButtonComponent
 import GlassControls
 import AlertComponent
@@ -224,6 +226,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
     /// Quick attach: the header chevron hands the selection to the composer instead of sending.
     public var collapseToComposer: (() -> Void)?
     private let quickAttachMorePlayOnce = ActionSlot<Void>()
+    private var quickAttachHadSelection = false
     /// Quick attach: the sheet mirrors the composer, so its send button sends the composer's message.
     /// (The picker's own export pipeline cannot handle the composer's mirrored items.)
     public var sendFromComposer: (() -> Void)?
@@ -288,7 +291,18 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         return nil
     }
     public var updateTabBarAlpha: (CGFloat, ContainedViewLayoutTransition) -> Void  = { _, _ in }
-    public var updateTabBarVisibility: (Bool, ContainedViewLayoutTransition) -> Void = { _, _ in }
+    public var updateTabBarVisibility: (Bool, ContainedViewLayoutTransition) -> Void = { _, _ in } {
+        didSet {
+            // The attachment container wires its hooks right after `showSelectedMedia()`: the composer
+            // preview always opens at full height.
+            if self.collapseToComposer != nil, self.isNodeLoaded, case .selected = self.controllerNode.currentDisplayMode {
+                self.requestAttachmentMenuExpansion()
+            }
+        }
+    }
+    /// Opened from the composer: the message(s) exactly as they will be sent, drawn instead of the
+    /// selected grid. `nil` keeps the stock grid.
+    public var composerPreviewMessages: (() -> [(identifier: String, message: Message)])?
     public var cancelPanGesture: () -> Void = { }
     public var isContainerPanning: () -> Bool = { return false }
     public var isContainerExpanded: () -> Bool = { return false }
@@ -371,6 +385,8 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         private var isFastScrolling = false
         
         private var selectionNode: MediaPickerSelectedListNode?
+        /// The composer preview's pinned Send: the composer's bot Start button, same params.
+        private var composerSendButton: SolidRoundedButtonNode?
         
         private var nextStableId: Int = 1
         private var currentEntries: [MediaPickerGridEntry] = []
@@ -1300,6 +1316,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 selectionNode.layer.allowsGroupOpacity = true
                 selectionNode.isUserInteractionEnabled = false
                 selectionNode.interaction = self.controller?.interaction
+                selectionNode.previewMessages = controller.composerPreviewMessages
                 selectionNode.getTransitionView = { [weak self] identifier in
                     if let strongSelf = self {
                         var node: MediaPickerGridItemNode?
@@ -1777,6 +1794,12 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         }
         
         func containerLayoutUpdated(_ layout: ContainerViewLayout, navigationBarHeight: CGFloat, transition: ContainedViewLayoutTransition) {
+            if let controller = self.controller, controller.collapseToComposer != nil {
+                // Opened from the composer, the selected grid is a read-only post preview: no caption
+                // panel. Re-applied on every layout because the attachment container wires the closure
+                // only after `showSelectedMedia()` ran; the setter is idempotent.
+                controller.updateTabBarVisibility(self.currentDisplayMode != .selected, .immediate)
+            }
             guard let controller = self.controller else {
                 return
             }
@@ -1971,8 +1994,29 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 }
                 
                 let selectedItems = controller.interaction?.selectionState?.selectedItems() as? [TGMediaSelectableItem] ?? []
+                var selectionInsets = cleanGridInsets
+                if controller.collapseToComposer != nil, self.currentDisplayMode == .selected {
+                    let sendButton: SolidRoundedButtonNode
+                    if let current = self.composerSendButton {
+                        sendButton = current
+                    } else {
+                        sendButton = SolidRoundedButtonNode(title: self.presentationData.strings.MediaPicker_Send, theme: SolidRoundedButtonTheme(theme: self.presentationData.theme), glass: true, glassInset: true, height: 50.0, cornerRadius: 50.0 * 0.5, isShimmering: false)
+                        sendButton.pressed = { [weak controller] in
+                            controller?.sendFromComposer?()
+                        }
+                        self.composerSendButton = sendButton
+                        self.containerNode.addSubnode(sendButton)
+                    }
+                    let buttonWidth = bounds.width - layout.safeInsets.left - layout.safeInsets.right - 32.0
+                    let buttonHeight = sendButton.updateLayout(width: buttonWidth, transition: selectionTransition)
+                    selectionTransition.updateFrame(node: sendButton, frame: CGRect(x: layout.safeInsets.left + 16.0, y: bounds.height - cleanGridInsets.bottom - 16.0 - buttonHeight, width: buttonWidth, height: buttonHeight))
+                    selectionInsets.bottom += buttonHeight + 32.0
+                } else if let sendButton = self.composerSendButton {
+                    self.composerSendButton = nil
+                    sendButton.removeFromSupernode()
+                }
                 let updateSelectionNode = {
-                    selectionNode.updateLayout(size: bounds.size, insets: cleanGridInsets, items: selectedItems, grouped: self.controller?.groupedValue ?? true, theme: self.presentationData.theme, wallpaper: self.presentationData.chatWallpaper, bubbleCorners: self.presentationData.chatBubbleCorners, transition: selectionTransition)
+                    selectionNode.updateLayout(size: bounds.size, insets: selectionInsets, items: selectedItems, grouped: self.controller?.groupedValue ?? true, theme: self.presentationData.theme, wallpaper: self.presentationData.chatWallpaper, bubbleCorners: self.presentationData.chatBubbleCorners, transition: selectionTransition)
                 }
                 
                 if selectedItems.count < 1 && self.currentDisplayMode == .selected {
@@ -2888,23 +2932,53 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         // With nothing selected the right group is empty, so the left slot keeps the close button;
         // once something is selected the "more" item moves into it and the group's own
         // alpha+blur item transition morphs one icon into the other.
-        if usesSwappedControls {
-            if !isBack {
-                // One stable item that cross-rotates close <-> more the way the composer's
-                // paperclip turns into cancel; the dots play their own animation as they arrive.
-                let showsMore = rightControlItems.contains(where: { $0.id == AnyHashable("more") })
-                rightControlItems.removeAll(where: { $0.id == AnyHashable("more") })
-                let playMore = self.quickAttachMorePlayOnce
-                leftControlItems = [GlassControlGroupComponent.Item(
-                    id: AnyHashable("closeOrMore"),
+        if usesSwappedControls && !isBack {
+            // Left: the close cross rotates into a chevron once something is selected (the chevron
+            // hands the selection back to the composer). Right: the dots arrive with their wave.
+            rightControlItems.removeAll(where: { $0.id == AnyHashable("more") })
+            let hasSelection = count > 0
+            let playMore = self.quickAttachMorePlayOnce
+            leftControlItems = [GlassControlGroupComponent.Item(
+                id: AnyHashable("closeOrCollapse"),
+                content: .customIcon(
+                    id: AnyHashable("closeOrCollapse"),
+                    component: AnyComponent(RotatingIconSwapComponent(
+                        firstIcon: "Navigation/Close",
+                        secondAnimation: nil,
+                        secondIcon: "Navigation/TitleExpand",
+                        showsSecond: hasSelection,
+                        color: self.presentationData.theme.chat.inputPanel.panelControlColor,
+                        playSecond: ActionSlot<Void>()
+                    )),
+                    insets: UIEdgeInsets()
+                ),
+                action: { [weak self] in
+                    guard let self else {
+                        return
+                    }
+                    if hasSelection {
+                        self.collapseToComposer?()
+                    } else {
+                        self.cancelPressed()
+                    }
+                }
+            )]
+            rightControlItems.removeAll()
+            if hasSelection {
+                if !self.quickAttachHadSelection {
+                    Queue.mainQueue().justDispatch {
+                        playMore.invoke(Void())
+                    }
+                }
+                rightControlItems.append(GlassControlGroupComponent.Item(
+                    id: AnyHashable("more"),
                     content: .customIcon(
-                        id: AnyHashable("closeOrMore"),
-                        component: AnyComponent(RotatingIconSwapComponent(
-                            firstIcon: "Navigation/Close",
-                            secondAnimation: "anim_morewide",
-                            showsSecond: showsMore,
+                        id: AnyHashable("more"),
+                        component: AnyComponent(LottieComponent(
+                            content: LottieComponent.AppBundleContent(name: "anim_morewide"),
                             color: self.presentationData.theme.chat.inputPanel.panelControlColor,
-                            playSecond: playMore
+                            size: CGSize(width: 32.0, height: 32.0),
+                            playOnce: playMore
                         )),
                         insets: UIEdgeInsets()
                     ),
@@ -2912,32 +2986,14 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                         guard let self else {
                             return
                         }
-                        if showsMore {
-                            playMore.invoke(Void())
-                            if let controlsView = self.buttons?.view as? GlassControlPanelComponent.View, let sourceView = controlsView.rightItemView?.itemView(id: AnyHashable("closeOrMore")) ?? controlsView.leftItemView?.itemView(id: AnyHashable("closeOrMore")) {
-                                self.searchOrMorePressed(view: sourceView, gesture: nil)
-                            }
-                        } else {
-                            self.cancelPressed()
+                        playMore.invoke(Void())
+                        if let controlsView = self.buttons?.view as? GlassControlPanelComponent.View, let sourceView = controlsView.rightItemView?.itemView(id: AnyHashable("more")) {
+                            self.searchOrMorePressed(view: sourceView, gesture: nil)
                         }
-                    }
-                )] + rightControlItems
-                rightControlItems.removeAll()
-            }
-            // The chevron collapses the selection into the composer from the grid and from the
-            // message preview alike.
-            if count > 0 {
-                rightControlItems.append(GlassControlGroupComponent.Item(
-                    id: AnyHashable("collapse"),
-                    content: .icon("Navigation/TitleExpand"),
-                    action: { [weak self] in
-                        self?.collapseToComposer?()
                     }
                 ))
             }
-            // Close/more sits on the right, next to the thumb; the chevron that hands the selection
-            // back to the composer takes the left slot.
-            swap(&leftControlItems, &rightControlItems)
+            self.quickAttachHadSelection = hasSelection
         }
         
         if let buttons = self.buttons {
@@ -3369,6 +3425,10 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                                 if let selectionContext = self.interaction?.selectionState, let editingContext = self.interaction?.editingState {
                                     for case let item as TGMediaEditableItem in selectionContext.selectedItems() {
                                         editingContext.setSpoiler(hasGeneric, for: item)
+                                    }
+                                    // The composer preview bubble reads spoilers at layout time.
+                                    if let layout = self.validLayout {
+                                        self.containerLayoutUpdated(layout, transition: .immediate)
                                     }
                                 }
                             })))
@@ -4484,14 +4544,16 @@ private class SelectedButtonNode: ASDisplayNode {
 /// (ChatTextInputPanelNode.setQuickAttachActive). The second side is a Lottie so it can animate in.
 private final class RotatingIconSwapComponent: Component {
     let firstIcon: String
-    let secondAnimation: String
+    let secondAnimation: String?
+    let secondIcon: String?
     let showsSecond: Bool
     let color: UIColor
     let playSecond: ActionSlot<Void>
 
-    init(firstIcon: String, secondAnimation: String, showsSecond: Bool, color: UIColor, playSecond: ActionSlot<Void>) {
+    init(firstIcon: String, secondAnimation: String?, secondIcon: String? = nil, showsSecond: Bool, color: UIColor, playSecond: ActionSlot<Void>) {
         self.firstIcon = firstIcon
         self.secondAnimation = secondAnimation
+        self.secondIcon = secondIcon
         self.showsSecond = showsSecond
         self.color = color
         self.playSecond = playSecond
@@ -4502,6 +4564,9 @@ private final class RotatingIconSwapComponent: Component {
             return false
         }
         if lhs.secondAnimation != rhs.secondAnimation {
+            return false
+        }
+        if lhs.secondIcon != rhs.secondIcon {
             return false
         }
         if lhs.showsSecond != rhs.showsSecond {
@@ -4546,14 +4611,20 @@ private final class RotatingIconSwapComponent: Component {
             self.firstView.bounds = CGRect(origin: CGPoint(), size: self.firstView.image?.size ?? size)
             self.firstView.center = CGPoint(x: size.width * 0.5, y: size.height * 0.5)
 
-            let secondSize = self.second.update(
-                transition: .immediate,
-                component: AnyComponent(LottieComponent(
-                    content: LottieComponent.AppBundleContent(name: component.secondAnimation),
+            let secondComponent: AnyComponent<Empty>
+            if let secondIcon = component.secondIcon {
+                secondComponent = AnyComponent(BundleIconComponent(name: secondIcon, tintColor: component.color))
+            } else {
+                secondComponent = AnyComponent(LottieComponent(
+                    content: LottieComponent.AppBundleContent(name: component.secondAnimation ?? ""),
                     color: component.color,
                     size: size,
                     playOnce: component.playSecond
-                )),
+                ))
+            }
+            let secondSize = self.second.update(
+                transition: .immediate,
+                component: secondComponent,
                 environment: {},
                 containerSize: size
             )

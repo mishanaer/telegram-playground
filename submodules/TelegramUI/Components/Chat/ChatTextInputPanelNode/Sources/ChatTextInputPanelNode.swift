@@ -827,6 +827,8 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
 
         self.attachmentButtonContextSource = ContextControllerSourceView()
         self.attachmentButtonContextSource.beginDelay = 0.12
+        // The fan should feel immediate: a short squeeze after the tap-vs-hold delay, not the stock 0.2s.
+        self.attachmentButtonContextSource.activationDuration = 0.08
         
         self.attachmentButtonBackground = GlassBackgroundView(frame: CGRect())
         self.attachmentButtonContextSource.addSubview(self.attachmentButtonBackground)
@@ -3746,7 +3748,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                 }
             }
             previewButton.button.addTarget(self, action: #selector(self.previewButtonPressed), for: .touchUpInside)
-            previewButton.icon.image = UIImage(bundleImageName: "Peer Info/RefProgram/IntroListEye")?.withRenderingMode(.alwaysTemplate)
+            previewButton.icon.image = generateQuickAttachEyeImage()
             self.attachmentButtonBackground.contentView.addSubview(previewButton.icon)
             self.attachmentButtonBackground.contentView.addSubview(previewButton.button)
         }
@@ -3761,8 +3763,9 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         // Collapsed the slot overlaps +, so it must not steal its taps.
         previewButton.button.isUserInteractionEnabled = isPreviewButtonVisible
         ComponentTransition(transition).setAlpha(view: previewButton.button, alpha: isPreviewButtonVisible ? 1.0 : 0.0)
-        ComponentTransition(transition).setAlpha(view: previewButton.icon, alpha: isPreviewButtonVisible ? 1.0 : 0.0)
-        ComponentTransition(transition).setScale(view: previewButton.icon, scale: isPreviewButtonVisible ? 1.0 : 0.001)
+        let isPreviewIconVisible = isPreviewButtonVisible && !self.isQuickAttachActive
+        ComponentTransition(transition).setAlpha(view: previewButton.icon, alpha: isPreviewIconVisible ? 1.0 : 0.0)
+        ComponentTransition(transition).setScale(view: previewButton.icon, scale: isPreviewIconVisible ? 1.0 : 0.001)
 
         if let context = self.context, let interfaceState = self.presentationInterfaceState, let editMessageState = interfaceState.editMessageState, let updatedMediaReference = editMessageState.mediaReference {
             let attachmentImageNode: TransformImageNode
@@ -5814,14 +5817,40 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
             self.attachmentButtonIcon.transform = active ? CGAffineTransform(rotationAngle: .pi * 0.5).scaledBy(x: 0.5, y: 0.5) : .identity
             self.quickAttachCancelIcon.alpha = active ? 1.0 : 0.0
             self.quickAttachCancelIcon.transform = active ? .identity : CGAffineTransform(rotationAngle: -.pi * 0.5).scaledBy(x: 0.5, y: 0.5)
+            // The whole capsule is lifted above the blur while the fan is up; the eye would sit on top of it.
+            if let previewButton = self.attachmentPreviewButton {
+                let visible = !active && !self.quickAttachPreviews.isEmpty
+                previewButton.icon.alpha = visible ? 1.0 : 0.0
+                previewButton.icon.transform = visible ? .identity : CGAffineTransform(scaleX: 0.001, y: 0.001)
+            }
         }
         self.attachmentButtonIcon.layer.removeAllAnimations()
         self.quickAttachCancelIcon.layer.removeAllAnimations()
+        self.attachmentPreviewButton?.icon.layer.removeAllAnimations()
         if animated {
             UIView.animate(withDuration: 0.3, delay: 0.0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.0, options: [.beginFromCurrentState, .allowUserInteraction], animations: changes)
         } else {
             changes()
         }
+    }
+
+    /// Re-sizes the attachment capsule while it is lifted above the quick attach blur (the panel's own
+    /// layout must not touch it then: its frame lives in the overlay's coordinates). The bottom 40x40
+    /// slot with the icons stays pinned to the capsule's bottom.
+    public func setQuickAttachCapsuleFrame(_ frame: CGRect, animated: Bool) {
+        guard let interfaceState = self.presentationInterfaceState else {
+            return
+        }
+        let transition: ContainedViewLayoutTransition = animated ? .animated(duration: 0.3, curve: .spring) : .immediate
+        var tintColor = GlassBackgroundView.TintColor(kind: .panel)
+        if case .clear = interfaceState.preferredGlassType {
+            tintColor = .init(kind: .clear)
+        }
+        transition.updateFrame(view: self.attachmentButtonBackground, frame: frame)
+        self.attachmentButtonBackground.update(size: frame.size, cornerRadius: 20.0, isDark: interfaceState.theme.overallDarkAppearance, tintColor: tintColor, isInteractive: true, transition: ComponentTransition(transition))
+        let slot = CGRect(origin: CGPoint(x: 0.0, y: frame.height - 40.0), size: CGSize(width: 40.0, height: 40.0))
+        transition.updateFrame(view: self.attachmentButtonIconContainer, frame: slot)
+        transition.updateFrame(layer: self.attachmentButton.layer, frame: slot)
     }
 
     public func setQuickAttachEditingMedia(_ active: Bool) {
@@ -5938,7 +5967,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         container.accessibilityLabel = "Attached photo"
 
         // A spoiler tile is the blurred still under dust, like the bubble it will become.
-        let imageView = UIImageView(image: hasSpoiler ? (blurredImage(image, radius: 24.0) ?? image) : image)
+        let imageView = UIImageView(image: hasSpoiler ? quickAttachSpoilerImage(image) : image)
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
         imageView.layer.cornerRadius = 10.0
@@ -6544,3 +6573,57 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
     }
 }
 
+/// The catalog eye (`Peer Info/RefProgram/IntroListEye`, a 30pt PDF whose outline is a 1.33pt band
+/// between an outer and an inner path) with the outline thickened to `quickAttachEyeOutlineWidth`:
+/// the same paths are filled even-odd and then stroked with the extra width, so every edge moves
+/// half of it — the outer edge outward, the hole edges inward.
+private let quickAttachEyeOutlineWidth: CGFloat = 1.5
+
+private func generateQuickAttachEyeImage() -> UIImage? {
+    let catalogOutlineWidth: CGFloat = 1.33
+    return generateImage(CGSize(width: 30.0, height: 30.0), rotatedContext: { size, context in
+        context.clear(CGRect(origin: CGPoint(), size: size))
+        context.translateBy(x: 3.602539, y: 7.335083)
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: 11.397670, y: 15.329956))
+        path.addCurve(to: CGPoint(x: 0.410942, y: 9.176823), control1: CGPoint(x: 5.380403, y: 15.329956), control2: CGPoint(x: 1.724442, y: 11.046906))
+        path.addCurve(to: CGPoint(x: 0.356286, y: 6.671401), control1: CGPoint(x: -0.118577, y: 8.422926), control2: CGPoint(x: -0.135898, y: 7.444943))
+        path.addCurve(to: CGPoint(x: 11.397670, y: -0.000044), control1: CGPoint(x: 1.616695, y: 4.690475), control2: CGPoint(x: 5.239590, y: -0.000044))
+        path.addCurve(to: CGPoint(x: 22.439053, y: 6.671401), control1: CGPoint(x: 17.555750, y: -0.000044), control2: CGPoint(x: 21.178642, y: 4.690475))
+        path.addCurve(to: CGPoint(x: 22.384398, y: 9.176822), control1: CGPoint(x: 22.931234, y: 7.444942), control2: CGPoint(x: 22.913918, y: 8.422924))
+        path.addCurve(to: CGPoint(x: 11.397670, y: 15.329956), control1: CGPoint(x: 21.070898, y: 11.046905), control2: CGPoint(x: 17.414938, y: 15.329956))
+        path.closeSubpath()
+        path.move(to: CGPoint(x: 1.499304, y: 8.412384))
+        path.addCurve(to: CGPoint(x: 11.397670, y: 13.999956), control1: CGPoint(x: 2.745249, y: 10.186285), control2: CGPoint(x: 6.054445, y: 13.999956))
+        path.addCurve(to: CGPoint(x: 21.296034, y: 8.412383), control1: CGPoint(x: 16.740896, y: 13.999956), control2: CGPoint(x: 20.050093, y: 10.186284))
+        path.addCurve(to: CGPoint(x: 21.316936, y: 7.385372), control1: CGPoint(x: 21.513580, y: 8.102655), control2: CGPoint(x: 21.522497, y: 7.708442))
+        path.addCurve(to: CGPoint(x: 11.397670, y: 1.329956), control1: CGPoint(x: 20.106823, y: 5.483495), control2: CGPoint(x: 16.830317, y: 1.329956))
+        path.addCurve(to: CGPoint(x: 1.478402, y: 7.385373), control1: CGPoint(x: 5.965021, y: 1.329956), control2: CGPoint(x: 2.688515, y: 5.483495))
+        path.addCurve(to: CGPoint(x: 1.499304, y: 8.412384), control1: CGPoint(x: 1.272843, y: 7.708441), control2: CGPoint(x: 1.281759, y: 8.102656))
+        path.closeSubpath()
+        let center = CGPoint(x: 11.397372, y: 7.665017)
+        path.addEllipse(in: CGRect(x: center.x - 4.33, y: center.y - 4.33, width: 8.66, height: 8.66))
+        path.addEllipse(in: CGRect(x: center.x - 3.0, y: center.y - 3.0, width: 6.0, height: 6.0))
+        context.setFillColor(UIColor.white.cgColor)
+        context.setStrokeColor(UIColor.white.cgColor)
+        context.addPath(path)
+        context.fillPath(using: .evenOdd)
+        context.setLineWidth(quickAttachEyeOutlineWidth - catalogOutlineWidth)
+        context.addPath(path)
+        context.strokePath()
+    })?.withRenderingMode(.alwaysTemplate)
+}
+
+
+/// Blur that does not depend on the source resolution: a fixed 24pt blur on a full-size photo is
+/// barely visible, so the still is shrunk to 40px first and blurred there; the tile scales it back up.
+private func quickAttachSpoilerImage(_ image: UIImage) -> UIImage {
+    let small = generateImage(CGSize(width: 40.0, height: 40.0), contextGenerator: { size, context in
+        UIGraphicsPushContext(context)
+        let scale = max(size.width / max(image.size.width, 1.0), size.height / max(image.size.height, 1.0))
+        let drawSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        image.draw(in: CGRect(origin: CGPoint(x: (size.width - drawSize.width) / 2.0, y: (size.height - drawSize.height) / 2.0), size: drawSize))
+        UIGraphicsPopContext()
+    }, scale: 1.0)
+    return small.flatMap { blurredImage($0, radius: 6.0) } ?? image
+}

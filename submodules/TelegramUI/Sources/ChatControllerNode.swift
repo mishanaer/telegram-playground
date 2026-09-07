@@ -4170,6 +4170,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         self.quickAttachBackdrop = backdrop
         containerView.addSubview(buttonVisual)
         containerView.addSubview(overlay)
+        if buttonFrame.height > 40.0 {
+            // The eye slot hides with the fan; shrink the capsule to the paperclip alone.
+            textInputPanelNode.setQuickAttachCapsuleFrame(CGRect(x: buttonFrame.minX, y: buttonFrame.maxY - 40.0, width: 40.0, height: 40.0), animated: true)
+        }
         self.quickAttachOverlay = overlay
         let selectedAssetIdentifiers = Set(self.quickAttachSelections.map(\.identifier))
         let availableItems = QuickAttachRecentPhotosProvider.shared.items.filter { item in
@@ -4301,7 +4305,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         self.quickAttachButtonVisualRestoreState = nil
         buttonVisual.removeFromSuperview()
         restoreState.superview.insertSubview(buttonVisual, at: min(restoreState.index, restoreState.superview.subviews.count))
-        buttonVisual.frame = restoreState.frame
+        self.textInputPanelNode?.setQuickAttachCapsuleFrame(restoreState.frame, animated: false)
     }
 
     private func clearQuickAttachSelection(identifier: String? = nil, animated: Bool) {
@@ -4418,6 +4422,27 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     /// What the composer row shows: the album being edited, or the message being composed.
     var quickAttachItems: [QuickAttachItem] {
         return self.isQuickAttachEditing ? self.quickAttachEditingItems : self.quickAttachSelections
+    }
+
+    /// The composer's media and text as the message(s) they will become, for the sheet's preview.
+    /// Items still being exported (no media yet) are left out.
+    func quickAttachPreviewMessages() -> [(identifier: String, message: Message)] {
+        let peerId = self.context.account.peerId
+        var peers = SimpleDictionary<PeerId, Peer>()
+        peers[peerId] = TelegramUser(id: peerId, accessHash: nil, firstName: "", lastName: "", username: nil, phone: nil, photo: [], botInfo: nil, restrictionInfo: nil, flags: [], emojiStatus: nil, usernames: [], storiesHidden: nil, nameColor: nil, backgroundEmojiId: nil, profileColor: nil, profileBackgroundEmojiId: nil, subscriberCount: nil, verificationIconFileId: nil)
+        let items = self.quickAttachItems.filter { $0.media != nil }
+        let text = self.chatPresentationInterfaceState.interfaceState.effectiveInputState.inputText
+        let timestamp = Int32(Date().timeIntervalSince1970)
+        return items.enumerated().map { index, item in
+            var attributes: [MessageAttribute] = []
+            if index == 0, !text.string.isEmpty {
+                attributes.append(TextEntitiesMessageAttribute(entities: generateChatInputTextEntities(text)))
+            }
+            if item.hasSpoiler {
+                attributes.append(MediaSpoilerMessageAttribute())
+            }
+            return (item.identifier, Message(stableId: UInt32(index), stableVersion: 0, id: MessageId(peerId: peerId, namespace: Namespaces.Message.Local, id: Int32(index)), globallyUniqueId: nil, groupingKey: items.count > 1 ? 1 : nil, groupInfo: nil, threadId: nil, timestamp: timestamp, flags: [], tags: [], globalTags: [], localTags: [], customTags: [], forwardInfo: nil, author: peers[peerId], text: index == 0 ? text.string : "", attributes: attributes, media: [item.media!], peers: peers, associatedMessages: SimpleDictionary(), associatedMessageIds: [], associatedMedia: [:], associatedThreadInfo: nil, associatedStories: [:]))
+        }
     }
 
     private func refreshQuickAttachPreviews(animated: Bool) {
@@ -4659,6 +4684,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             postbox: self.context.account.postbox,
             messageIds: self.quickAttachEditingMessageIds,
             media: self.quickAttachEditingItems.compactMap(\.media),
+            spoilers: self.quickAttachEditingItems.filter { $0.media != nil }.map(\.hasSpoiler),
             text: text,
             entities: entities,
             richText: richText

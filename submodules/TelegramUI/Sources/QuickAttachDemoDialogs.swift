@@ -155,6 +155,7 @@ extension QuickAttachDemo {
         postbox: Postbox,
         messageIds: [MessageId],
         media: [Media],
+        spoilers: [Bool],
         text: String,
         entities: TextEntitiesMessageAttribute?,
         richText: RichTextMessageAttribute?
@@ -173,9 +174,12 @@ extension QuickAttachDemo {
                 ? (currentMessages.compactMap(\.groupingKey).first ?? Int64.random(in: 1 ... Int64.max))
                 : nil
 
-            func updatedAttributes(_ attributes: [MessageAttribute], includeCaption: Bool) -> [MessageAttribute] {
+            func updatedAttributes(_ attributes: [MessageAttribute], includeCaption: Bool, hasSpoiler: Bool) -> [MessageAttribute] {
                 var result = attributes.filter {
-                    !($0 is TextEntitiesMessageAttribute) && !($0 is RichTextMessageAttribute) && !($0 is EditedMessageAttribute)
+                    !($0 is TextEntitiesMessageAttribute) && !($0 is RichTextMessageAttribute) && !($0 is EditedMessageAttribute) && !($0 is MediaSpoilerMessageAttribute)
+                }
+                if hasSpoiler {
+                    result.append(MediaSpoilerMessageAttribute())
                 }
                 if includeCaption, let entities {
                     result.append(entities)
@@ -222,7 +226,7 @@ extension QuickAttachDemo {
                         forwardInfo: currentMessage.forwardInfo.flatMap(StoreMessageForwardInfo.init),
                         authorId: currentMessage.author?.id,
                         text: index == 0 ? text : "",
-                        attributes: updatedAttributes(currentMessage.attributes, includeCaption: index == 0),
+                        attributes: updatedAttributes(currentMessage.attributes, includeCaption: index == 0, hasSpoiler: index < spoilers.count && spoilers[index]),
                         media: [media[index]]
                     ))
                 })
@@ -234,7 +238,8 @@ extension QuickAttachDemo {
                 flags.remove(.Unsent)
                 flags.remove(.Failed)
                 flags.remove(.Sending)
-                let additions = media[currentMessages.count...].map { item in
+                let additions = media.indices[currentMessages.count...].map { index -> StoreMessage in
+                    let item = media[index]
                     return StoreMessage(
                         peerId: template.id.peerId,
                         namespace: Namespaces.Message.Local,
@@ -250,7 +255,7 @@ extension QuickAttachDemo {
                         forwardInfo: nil,
                         authorId: template.author?.id,
                         text: "",
-                        attributes: updatedAttributes([], includeCaption: false),
+                        attributes: updatedAttributes([], includeCaption: false, hasSpoiler: index < spoilers.count && spoilers[index]),
                         media: [item]
                     )
                 }

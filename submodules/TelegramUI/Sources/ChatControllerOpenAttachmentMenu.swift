@@ -1834,6 +1834,9 @@ extension ChatControllerImpl {
         }
         if self.quickAttachOpensPreview {
             self.quickAttachOpensPreview = false
+            controller.composerPreviewMessages = { [weak self] in
+                return self?.chatDisplayNode.quickAttachPreviewMessages() ?? []
+            }
             controller.showSelectedMedia()
         }
         let mediaPickerContext = controller.mediaPickerContext
