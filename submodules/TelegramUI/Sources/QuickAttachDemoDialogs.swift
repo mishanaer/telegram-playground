@@ -332,6 +332,15 @@ extension QuickAttachDemo {
             transaction.updatePeersInternal([accountPeer] + dialogPeers, update: { _, updated in
                 return updated
             })
+            // A peer without a presence reads "last seen a long time ago": Ksusha is online, the rest recent.
+            var presences: [PeerId: PeerPresence] = [:]
+            for dialog in quickAttachDemoDialogs {
+                let status: UserPresenceStatus = dialog.firstName == "Ksusha" ? .present(until: Int32.max) : .recently(isHidden: false)
+                presences[dialog.peerId] = TelegramUserPresence(status: status, lastActivity: 0)
+            }
+            transaction.updatePeerPresencesInternal(presences: presences, merge: { _, updated in
+                return updated
+            })
 
             for hole in transaction.allChatListHoles(groupId: .root) {
                 transaction.replaceChatListHole(groupId: .root, index: hole.index, hole: nil)
