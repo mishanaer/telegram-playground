@@ -5882,6 +5882,9 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
     }
 
     public func setQuickAttachPreviews(_ items: [(identifier: String, image: UIImage, media: Media?, hasSpoiler: Bool)], removable: Bool, animated: Bool) {
+        // A tile flown in from the fan stays hidden until the flight lands (revealQuickAttachPreview);
+        // a refresh in the meantime must not show it early next to the flying copy.
+        let hiddenIdentifiers = Set(self.quickAttachPreviews.filter { $0.container.alpha.isZero }.map(\.identifier))
         for preview in self.quickAttachPreviews {
             preview.container.removeFromSuperview()
         }
@@ -5906,8 +5909,9 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
 
             for item in items {
                 let preview = self.makeQuickAttachPreview(identifier: item.identifier, image: item.image, media: item.media, hasSpoiler: item.hasSpoiler)
-                preview.container.alpha = 1.0
-                preview.removeButton.alpha = removable ? 1.0 : 0.0
+                let isHidden = hiddenIdentifiers.contains(item.identifier)
+                preview.container.alpha = isHidden ? 0.0 : 1.0
+                preview.removeButton.alpha = (removable && !isHidden) ? 1.0 : 0.0
                 preview.removeButton.isUserInteractionEnabled = removable
                 self.quickAttachPreviews.append(preview)
                 scrollView.addSubview(preview.container)
