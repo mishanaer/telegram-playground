@@ -4613,10 +4613,16 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         }
         self.quickAttachEditingMessageId = messageId
         self.quickAttachEditingMessageIds = messages.map(\.id)
-        self.quickAttachEditingItems.removeAll()
+        // Placeholders first: the identifiers are known, so the strip takes its height at once and the
+        // loaded stills replace the tiles later without another height change.
+        let placeholder = generateImage(CGSize(width: 2.0, height: 2.0), contextGenerator: { size, context in
+            context.setFillColor(UIColor(white: 0.5, alpha: 0.12).cgColor)
+            context.fill(CGRect(origin: CGPoint(), size: size))
+        }) ?? UIImage()
+        self.quickAttachEditingItems = mediaReferences.map { (identifier: $0.identifier, media: $0.mediaReference.media, image: placeholder, hasSpoiler: $0.hasSpoiler) }
         textInputPanelNode.setQuickAttachEditingMedia(true)
         textInputPanelNode.customSendIsDisabled = true
-        textInputPanelNode.setQuickAttachPreviews([], removable: true, animated: false)
+        textInputPanelNode.setQuickAttachPreviews(self.quickAttachEditingItems.map { ($0.identifier, $0.image, $0.media, $0.hasSpoiler) }, removable: true, animated: false)
         self.quickAttachEditPreviewsDisposable.set((combineLatest(previewSignals)
         |> deliverOnMainQueue).start(next: { [weak self, weak textInputPanelNode] items in
             guard let self, let textInputPanelNode, self.quickAttachEditingMessageId == messageId else {

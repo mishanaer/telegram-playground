@@ -1771,6 +1771,10 @@ extension ChatControllerImpl {
                         // An album's caption lives on one of its messages; editing is opened from any tile, so
                         // the composer takes the caption from whichever message carries it.
                         let captionMessage = editMessages.first(where: { !$0.text.isEmpty || $0.attributes.contains(where: { $0 is RichTextMessageAttribute }) }) ?? message
+                        // Before the state update, the way an accessory panel's height is: the tile strip
+                        // reserves its height now, so the keyboard, the edit state and the taller capsule
+                        // share one layout transition instead of the strip arriving mid-animation.
+                        strongSelf.chatDisplayNode.beginQuickAttachEditing(messageId: messageId, messages: editMessages)
                         strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, { state in
                             var entities: [MessageTextEntity] = []
                             for attribute in captionMessage.attributes {
@@ -1817,10 +1821,7 @@ extension ChatControllerImpl {
                             updated = updated.updatedShowCommands(false)
                             
                             return updated
-                        }, completion: { transition in
-                            strongSelf.chatDisplayNode.beginQuickAttachEditing(messageId: messageId, messages: editMessages)
-                            completion(transition)
-                        })
+                        }, completion: completion)
                         
                         if !strongSelf.chatDisplayNode.ensureInputViewFocused() {
                             DispatchQueue.main.async { [weak self] in
@@ -2341,7 +2342,9 @@ extension ChatControllerImpl {
                             }
                         }
                         
-                        strongSelf.chatDisplayNode.endQuickAttachEditing(animated: true)
+                        // Not animated on its own: that would schedule a 0.1s layout the state update below
+                        // then keeps; an immediate request is upgraded to the state update's transition.
+                        strongSelf.chatDisplayNode.endQuickAttachEditing(animated: false)
                         strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, { state in
                             var state = state
                             state = state.updatedInterfaceState({ $0.withUpdatedEditMessage(nil) })
