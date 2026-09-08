@@ -5882,11 +5882,21 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
     }
 
     public func setQuickAttachPreviews(_ items: [(identifier: String, image: UIImage, media: Media?, hasSpoiler: Bool)], removable: Bool, animated: Bool) {
+        if animated, items.isEmpty, let oldScrollView = self.quickAttachPreviewScrollView {
+            // The capsule animates its height down; the tiles fade with it instead of vanishing a frame early.
+            oldScrollView.isUserInteractionEnabled = false
+            UIView.animate(withDuration: 0.2, animations: {
+                oldScrollView.alpha = 0.0
+            }, completion: { _ in
+                oldScrollView.removeFromSuperview()
+            })
+        } else {
+            self.quickAttachPreviewScrollView?.removeFromSuperview()
+        }
         for preview in self.quickAttachPreviews {
             preview.container.removeFromSuperview()
         }
         self.quickAttachPreviews.removeAll()
-        self.quickAttachPreviewScrollView?.removeFromSuperview()
         self.quickAttachPreviewScrollView = nil
 
         if !items.isEmpty {

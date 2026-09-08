@@ -302,6 +302,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     private var quickAttachEditingMessageId: MessageId?
     private var quickAttachEditingMessageIds: [MessageId] = []
     private var quickAttachEditingItems: [QuickAttachItem] = []
+    private var quickAttachEditWhenReady = false
     private let quickAttachEditPreviewsDisposable = MetaDisposable()
     
     private var inputMediaNodeData: ChatEntityKeyboardInputNode.InputData?
@@ -4343,10 +4344,25 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
 
     /// The attachment sheet's send button: send the composer's message once its items are in.
     func sendQuickAttachWhenReady(controller: ChatControllerImpl) {
+        if self.isQuickAttachEditing {
+            // Editing: "Send" is the edit's checkmark. Items the sheet just added are still being
+            // exported, so the apply waits for them.
+            self.quickAttachEditWhenReady = true
+            self.flushQuickAttachSendIfReady()
+            return
+        }
         let _ = self.sendQuickAttachSelectionIfNeeded(controller: controller)
     }
 
     private func flushQuickAttachSendIfReady() {
+        if self.quickAttachEditWhenReady {
+            guard self.quickAttachPendingAppends == 0, !self.quickAttachEditingItems.contains(where: { $0.media == nil }) else {
+                return
+            }
+            self.quickAttachEditWhenReady = false
+            self.interfaceInteraction?.editMessage()
+            return
+        }
         guard self.quickAttachSendWhenReady, self.quickAttachPendingAppends == 0, !self.quickAttachSelections.contains(where: { $0.media == nil }), let controller = self.controller else {
             return
         }
@@ -4744,6 +4760,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             return
         }
         self.quickAttachEditingMessageId = nil
+        self.quickAttachEditWhenReady = false
         self.quickAttachEditingMessageIds.removeAll()
         self.quickAttachEditingItems.removeAll()
         self.quickAttachEditPreviewsDisposable.set(nil)

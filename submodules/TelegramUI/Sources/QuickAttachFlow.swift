@@ -93,7 +93,9 @@ final class QuickAttachRecentPhotosProvider {
                         index: index,
                         targetSize: targetSize,
                         exact: true,
-                        deliveryMode: .opportunistic,
+                        // Not .opportunistic: its first delivery is a degraded thumbnail, and the fan is
+                        // often presented before the good one lands.
+                        deliveryMode: .highQualityFormat,
                         synchronous: false
                     )
                     |> map { image in
