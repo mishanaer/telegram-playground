@@ -444,6 +444,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 self.bottomWarpView = WarpView(frame: .zero)
                 self.bottomWarpView?.fadesBottomEdge = false
                 self.bottomWarpView?.perspectiveStrength = 0.5
+                self.bottomWarpView?.rasterizesSlices = true
             } else {
                 self.bottomWarpView = nil
             }

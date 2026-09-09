@@ -104,6 +104,19 @@ public final class WarpView: UIView {
     /// horizontally, so on a full-width photo grid the grid's vertical gaps bow into arcs at the
     /// bottom; a lower value keeps the depth cue with proportionally smaller arcs, 0 is orthographic.
     public var perspectiveStrength: CGFloat = 1.0
+    /// Each slice is a clipped portal under a projective transform, so Core Animation flattens it to a
+    /// buffer and maps that onto the projected quad with plain bilinear sampling: tile edges inside the
+    /// bend come out jagged. Rasterizing the slice at screen scale with trilinear (mipmapped)
+    /// minification smooths the interior; the emoji keyboard's small glyphs do not need it.
+    public var rasterizesSlices: Bool = false {
+        didSet {
+            for view in self.warpViews {
+                view.layer.shouldRasterize = self.rasterizesSlices
+                view.layer.rasterizationScale = UIScreenScale
+                view.layer.minificationFilter = self.rasterizesSlices ? .trilinear : .linear
+            }
+        }
+    }
 
     private func geometry(size: CGSize, topInset: CGFloat, warpHeight: CGFloat) -> Geometry {
         let allItemsHeight = warpHeight * 0.5

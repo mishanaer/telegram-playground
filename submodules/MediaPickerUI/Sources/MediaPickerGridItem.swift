@@ -189,6 +189,12 @@ final class MediaPickerGridItemNode: GridItemNode {
         super.init()
         
         self.clipsToBounds = true
+        // The picker's bottom rows are bent in 3D through portal clones of these cells. The clones
+        // inherit layer flags: antialiased edges keep the tile boundary smooth on the slanted slices,
+        // trilinear minification keeps the photo from shimmering where the bend compresses it.
+        self.imageNode.layer.allowsEdgeAntialiasing = true
+        self.imageNode.layer.minificationFilter = .trilinear
+        self.backgroundNode.layer.allowsEdgeAntialiasing = true
         
         self.addSubnode(self.imageNode)
         self.addSubnode(self.activateAreaNode)
@@ -308,6 +314,7 @@ final class MediaPickerGridItemNode: GridItemNode {
     }
         
     override func didLoad() {
+        self.layer.allowsEdgeAntialiasing = true
         super.didLoad()
         
         self.view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.imageNodeTap(_:))))
