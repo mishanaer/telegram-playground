@@ -1,0 +1,14 @@
+{
+  "observed_wall_seconds" : 18.251864833320724,
+  "rss_end_bytes" : 548143104,
+  "limits" : "CPU covers all process work plus probe overhead. RSS is two snapshots, not peak. File I\/O occurs after the measurement.",
+  "requested_duration_seconds" : 18,
+  "rss_start_bytes" : 523862016,
+  "buffer_overflow" : 0,
+  "metric" : "CADisplayLink callback cadence; not rendered FPS",
+  "callbacks" : 1094,
+  "frame_rate_policy" : "default; no preferredFrameRateRange override",
+  "cpu_process_seconds" : 1.0913979999999999,
+  "cpu_process_percent_one_core_100" : 5.9796519970251829,
+  "csv_written" : true
+}
