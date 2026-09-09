@@ -441,9 +441,9 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             self.backgroundNode.backgroundColor = self.presentationData.theme.list.plainBackgroundColor
 
             if controller.warpContentsOnBottomEdge {
-                self.bottomWarpView = WarpView(frame: .zero)
+                self.bottomWarpView = WarpView(frame: .zero, sliceCount: 8, mesh: true)   // test build: mesh bend
                 self.bottomWarpView?.fadesBottomEdge = false
-                self.bottomWarpView?.perspectiveStrength = 0.5
+                self.bottomWarpView?.perspectiveStrength = 1.0
                 self.bottomWarpView?.rasterizesSlices = true
             } else {
                 self.bottomWarpView = nil

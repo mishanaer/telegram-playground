@@ -1807,7 +1807,7 @@ extension ChatControllerImpl {
             sendPaidMessageStars: self.presentationInterfaceState.sendPaidMessageStars?.value,
             selectionContext: selectionContext,
             saveEditedPhotos: saveEditedPhotos,
-            displayBottomEdgeEffect: !self.chatDisplayNode.isQuickAttachEditing,
+            displayBottomEdgeEffect: false,
             warpContentsOnBottomEdge: true
         )
         for item in preselectedSpoilers {

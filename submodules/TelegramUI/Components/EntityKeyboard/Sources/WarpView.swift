@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import Display
 import ComponentFlow
+import MeshTransform
 import TelegramPresentationData
 
 public final class WarpView: UIView {
@@ -49,7 +50,17 @@ public final class WarpView: UIView {
     private let warpMaskContainer: UIView
     private let warpMaskGradientLayer: SimpleGradientLayer
     
-    public override init(frame: CGRect) {
+    public convenience override init(frame: CGRect) {
+        self.init(frame: frame, sliceCount: 8)
+    }
+
+    /// Mesh mode bends one portal of the whole band instead of separate flat slices.
+    private let usesMesh: Bool
+    private var meshParameters: (size: CGSize, warpHeight: CGFloat, perspective: CGFloat)?
+
+    /// `sliceCount`: how many flat slices approximate the arc (the emoji keyboard uses 8); ignored with `mesh`.
+    public init(frame: CGRect, sliceCount: Int, mesh: Bool = false) {
+        self.usesMesh = mesh
         self.contentView = PortalSourceView()
         self.clippingView = UIView()
         
@@ -65,7 +76,7 @@ public final class WarpView: UIView {
         self.addSubview(self.clippingView)
         self.addSubview(self.warpMaskContainer)
         
-        for _ in 0 ..< 8 {
+        for _ in 0 ..< (mesh ? 1 : max(1, sliceCount)) {
             if let warpView = WarpPartView(contentView: self.contentView) {
                 self.warpViews.append(warpView)
                 self.warpMaskContainer.addSubview(warpView)
@@ -161,7 +172,9 @@ public final class WarpView: UIView {
         }
         
         let clippingTopInset: CGFloat = topInset
-        let clippingFrame = CGRect(origin: CGPoint(x: 0.0, y: clippingTopInset), size: CGSize(width: size.width, height: -clippingTopInset + size.height - 21.0))
+        // The flat grid ends where the mesh starts; overlapping copies expose shifted cell gaps.
+        let clippingBottomInset: CGFloat = self.usesMesh ? allItemsHeight : 21.0
+        let clippingFrame = CGRect(origin: CGPoint(x: 0.0, y: clippingTopInset), size: CGSize(width: size.width, height: -clippingTopInset + size.height - clippingBottomInset))
         
         var locations: [NSNumber] = []
         var colors: [CGColor] = []
@@ -197,8 +210,11 @@ public final class WarpView: UIView {
     
     public func update(size: CGSize, topInset: CGFloat, warpHeight: CGFloat, theme: PresentationTheme, transition: ComponentTransition) {
         let geometry = self.geometry(size: size, topInset: topInset, warpHeight: warpHeight)
+        if self.usesMesh {
+            self.layoutMesh(size: size, warpHeight: warpHeight, transition: .immediate)
+        }
         transition.setFrame(view: self.contentView, frame: geometry.contentFrame)
-        for (i, part) in geometry.parts.enumerated() {
+        for (i, part) in geometry.parts.enumerated() where !self.usesMesh {
             transition.setPosition(view: self.warpViews[i], position: part.position)
             transition.setBounds(view: self.warpViews[i], bounds: part.bounds)
             transition.setTransform(view: self.warpViews[i], transform: part.transform)
@@ -216,10 +232,57 @@ public final class WarpView: UIView {
     /// host animates its own frame with that transition: `ComponentTransition` cannot carry a
     /// `.customSpring` curve and falls back to a plain spring, so the bend would follow a different
     /// curve than the sheet it sits in and visibly detach from the bottom edge while it settles.
+    /// End the arc at its projected tangent, with a radius that fills the visible band. A quarter
+    /// circle under perspective falls short of the bottom and folds back over its last rows.
+    private func layoutMesh(size: CGSize, warpHeight: CGFloat, transition: ContainedViewLayoutTransition) {
+        guard let part = self.warpViews.first else {
+            return
+        }
+        let bandHeight = warpHeight * 0.5
+        let perspective = self.perspectiveStrength / (240.0 * warpHeight / 50.0)
+        let projectedDepth = perspective * bandHeight
+        let radius = bandHeight * (sqrt(1.0 + projectedDepth * projectedDepth) + projectedDepth)
+        let endAngle = acos(perspective * radius / (1.0 + perspective * radius))
+        let bandLength = radius * endAngle
+        let rect = CGRect(origin: CGPoint(x: 0.0, y: size.height - bandHeight), size: CGSize(width: size.width, height: bandLength))
+        transition.updatePosition(layer: part.layer, position: CGPoint(x: size.width * 0.5, y: 0.0))
+        transition.updateBounds(layer: part.layer, bounds: CGRect(origin: CGPoint(), size: rect.size))
+        part.update(containerSize: size, rect: rect, layoutTransition: transition)
+        if self.meshParameters?.size != size || self.meshParameters?.warpHeight != warpHeight || self.meshParameters?.perspective != self.perspectiveStrength {
+            self.meshParameters = (size, warpHeight, self.perspectiveStrength)
+            let rows = 24
+            let columns = 6
+            let mesh = MeshTransform()
+            for i in 0 ... rows {
+                let v = CGFloat(i) / CGFloat(rows)
+                let angle = v * endAngle
+                let y = radius * sin(angle) / bandLength
+                let z = radius * (1.0 - cos(angle))
+                // Project the mesh itself so its perspective stays fixed while the sheet scales.
+                let depth = 1.0 + perspective * z
+                for j in 0 ... columns {
+                    let u = CGFloat(j) / CGFloat(columns)
+                    mesh.add(MeshTransform.Vertex(from: CGPoint(x: u, y: v), to: MeshTransform.Point3D(x: 0.5 + (u - 0.5) / depth, y: y / depth, z: 0.0)))
+                }
+            }
+            for i in 0 ..< rows {
+                for j in 0 ..< columns {
+                    let a = UInt32(i * (columns + 1) + j)
+                    let stride = UInt32(columns + 1)
+                    mesh.add(MeshTransform.Face(indices: (a, a + 1, a + stride + 1, a + stride), w: (0.0, 0.0, 0.0, 0.0)))
+                }
+            }
+            part.layer.setValue(mesh.makeValue(), forKey: "meshTransform")
+        }
+    }
+
     public func update(size: CGSize, topInset: CGFloat, warpHeight: CGFloat, theme: PresentationTheme, layoutTransition: ContainedViewLayoutTransition) {
         let geometry = self.geometry(size: size, topInset: topInset, warpHeight: warpHeight)
         layoutTransition.updateFrame(view: self.contentView, frame: geometry.contentFrame)
-        for (i, part) in geometry.parts.enumerated() {
+        if self.usesMesh {
+            self.layoutMesh(size: size, warpHeight: warpHeight, transition: layoutTransition)
+        }
+        for (i, part) in geometry.parts.enumerated() where !self.usesMesh {
             layoutTransition.updatePosition(layer: self.warpViews[i].layer, position: part.position)
             layoutTransition.updateBounds(layer: self.warpViews[i].layer, bounds: part.bounds)
             layoutTransition.updateTransform(layer: self.warpViews[i].layer, transform: part.transform)
