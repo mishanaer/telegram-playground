@@ -1,0 +1,224 @@
+{
+  "window_seconds": {
+    "start_inclusive": 0,
+    "end_exclusive": 22.598117,
+    "duration": 22.598117
+  },
+  "unique_presentations": 1317,
+  "presentations_per_window_second": 58.279192022945985,
+  "interframe_span_fps": 59.18820432037051,
+  "first_presentation_seconds": 0.362766125,
+  "last_presentation_seconds": 22.596926041,
+  "interframe_ms": {
+    "count": 1316,
+    "mean": 16.89525829483283,
+    "p50": 12.502812500000001,
+    "p95_linear": 26.047562499999998,
+    "p99_linear": 113.56714014999811,
+    "min": 8.335125,
+    "max": 1133.588083
+  },
+  "one_second_bins": [
+    {
+      "start_seconds": 0.0,
+      "end_seconds": 1.0,
+      "presentations": 49,
+      "presentations_per_second": 49.0,
+      "max_interframe_ending_here_ms": 16.670459
+    },
+    {
+      "start_seconds": 1.0,
+      "end_seconds": 2.0,
+      "presentations": 74,
+      "presentations_per_second": 74.0,
+      "max_interframe_ending_here_ms": 16.670459
+    },
+    {
+      "start_seconds": 2.0,
+      "end_seconds": 3.0,
+      "presentations": 77,
+      "presentations_per_second": 77.0,
+      "max_interframe_ending_here_ms": 20.838
+    },
+    {
+      "start_seconds": 3.0,
+      "end_seconds": 4.0,
+      "presentations": 74,
+      "presentations_per_second": 74.0,
+      "max_interframe_ending_here_ms": 29.173333
+    },
+    {
+      "start_seconds": 4.0,
+      "end_seconds": 5.0,
+      "presentations": 68,
+      "presentations_per_second": 68.0,
+      "max_interframe_ending_here_ms": 33.340958
+    },
+    {
+      "start_seconds": 5.0,
+      "end_seconds": 6.0,
+      "presentations": 53,
+      "presentations_per_second": 53.0,
+      "max_interframe_ending_here_ms": 41.676042
+    },
+    {
+      "start_seconds": 6.0,
+      "end_seconds": 7.0,
+      "presentations": 62,
+      "presentations_per_second": 62.0,
+      "max_interframe_ending_here_ms": 37.508375
+    },
+    {
+      "start_seconds": 7.0,
+      "end_seconds": 8.0,
+      "presentations": 74,
+      "presentations_per_second": 74.0,
+      "max_interframe_ending_here_ms": 50.01125
+    },
+    {
+      "start_seconds": 8.0,
+      "end_seconds": 9.0,
+      "presentations": 28,
+      "presentations_per_second": 28.0,
+      "max_interframe_ending_here_ms": 133.363291
+    },
+    {
+      "start_seconds": 9.0,
+      "end_seconds": 10.0,
+      "presentations": 36,
+      "presentations_per_second": 36.0,
+      "max_interframe_ending_here_ms": 183.3745
+    },
+    {
+      "start_seconds": 10.0,
+      "end_seconds": 11.0,
+      "presentations": 74,
+      "presentations_per_second": 74.0,
+      "max_interframe_ending_here_ms": 91.68725
+    },
+    {
+      "start_seconds": 11.0,
+      "end_seconds": 12.0,
+      "presentations": 81,
+      "presentations_per_second": 81.0,
+      "max_interframe_ending_here_ms": 29.173333
+    },
+    {
+      "start_seconds": 12.0,
+      "end_seconds": 13.0,
+      "presentations": 71,
+      "presentations_per_second": 71.0,
+      "max_interframe_ending_here_ms": 33.340833
+    },
+    {
+      "start_seconds": 13.0,
+      "end_seconds": 14.0,
+      "presentations": 65,
+      "presentations_per_second": 65.0,
+      "max_interframe_ending_here_ms": 133.363459
+    },
+    {
+      "start_seconds": 14.0,
+      "end_seconds": 15.0,
+      "presentations": 47,
+      "presentations_per_second": 47.0,
+      "max_interframe_ending_here_ms": 333.408209
+    },
+    {
+      "start_seconds": 15.0,
+      "end_seconds": 16.0,
+      "presentations": 7,
+      "presentations_per_second": 7.0,
+      "max_interframe_ending_here_ms": 896.034541
+    },
+    {
+      "start_seconds": 16.0,
+      "end_seconds": 17.0,
+      "presentations": 15,
+      "presentations_per_second": 15.0,
+      "max_interframe_ending_here_ms": 12.502834
+    },
+    {
+      "start_seconds": 17.0,
+      "end_seconds": 18.0,
+      "presentations": 56,
+      "presentations_per_second": 56.0,
+      "max_interframe_ending_here_ms": 1133.588083
+    },
+    {
+      "start_seconds": 18.0,
+      "end_seconds": 19.0,
+      "presentations": 64,
+      "presentations_per_second": 64.0,
+      "max_interframe_ending_here_ms": 133.363417
+    },
+    {
+      "start_seconds": 19.0,
+      "end_seconds": 20.0,
+      "presentations": 55,
+      "presentations_per_second": 55.0,
+      "max_interframe_ending_here_ms": 312.570208
+    },
+    {
+      "start_seconds": 20.0,
+      "end_seconds": 21.0,
+      "presentations": 75,
+      "presentations_per_second": 75.0,
+      "max_interframe_ending_here_ms": 62.514042
+    },
+    {
+      "start_seconds": 21.0,
+      "end_seconds": 22.0,
+      "presentations": 69,
+      "presentations_per_second": 69.0,
+      "max_interframe_ending_here_ms": 75.016917
+    },
+    {
+      "start_seconds": 22.0,
+      "end_seconds": 22.598117,
+      "presentations": 43,
+      "presentations_per_second": 71.89228863249164,
+      "max_interframe_ending_here_ms": 79.184417
+    }
+  ],
+  "thermal_during_capture": [
+    {
+      "start_seconds": 0.0,
+      "end_seconds": 22.598116874,
+      "state": "Nominal",
+      "is_induced": false
+    }
+  ],
+  "scenario": "User-confirmed manual photo-grid scrolling with warp enabled; camera offscreen; pauses included",
+  "date": "2026-09-10",
+  "device_model": "iPhone 15 Pro Max",
+  "os": "iOS 27.0 (24A5418b)",
+  "build": "100073",
+  "configuration": "Release arm64",
+  "low_power_at_preflight": false,
+  "validation": {
+    "on_glass_rows": 1408,
+    "unique_on_glass_events": 1408,
+    "repeat_rows_excluded": 169,
+    "ca_frame_info_unique_events": 1421,
+    "exact_timestamp_matches_ns": 1408,
+    "ca_extra_events_outside_window": 13,
+    "inside_window_sources_match": true,
+    "code_counts": {
+      "0xc0": 1416,
+      "0xc3": 1251,
+      "0xc7": 1416,
+      "0xc8": 1416,
+      "0xcb": 0,
+      "0xce": 0,
+      "0xd1": 1408,
+      "0xd2": 169
+    }
+  },
+  "limitations": [
+    "No warp-off or emoji-picker baseline",
+    "No stable 60 FPS claim",
+    "Whole-display presentation during confirmed scrolling, not isolated warp GPU time",
+    "Pauses between manual gestures are included"
+  ]
+}
